@@ -1,5 +1,6 @@
 
 export type ReturnAction = 'return' | 'exchange';
+export type ExchangeType = 'same_model' | 'different_model';
 
 export interface Article {
   id: string;
@@ -17,12 +18,15 @@ export interface Article {
 export interface SelectionConfig {
   action: ReturnAction;
   reason: string;
+  exchangeType?: ExchangeType;
   exchangeSize?: string;
   exchangeColor?: string;
+  exchangeArticleId?: string;
 }
 
 export interface CustomerDetails {
   email: string;
+  phone: string;
   firstName: string;
   lastName: string;
   address: string;

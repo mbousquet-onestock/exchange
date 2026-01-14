@@ -15,7 +15,7 @@ const Stepper: React.FC<StepperProps> = ({ currentStep }) => {
   ];
 
   return (
-    <div className="w-full py-6 mb-8 border-b border-gray-100 bg-white">
+    <div className="w-full py-6 mb-4 border-b border-gray-100 bg-white">
       <div className="max-w-xl mx-auto flex items-center justify-between px-4 relative">
         {/* Progress Line */}
         <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-200 -translate-y-[1.5rem] z-0 px-12">

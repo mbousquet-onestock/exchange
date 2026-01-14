@@ -69,7 +69,7 @@ export const METHODS = [
     label: 'UPS: Standard delivery',
     description: 'Drop off at a UPS Access Point.',
     icon: (
-      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/UPS_logo_2014.svg/1200px-UPS_logo_2014.svg.png" className="w-6 h-auto" alt="UPS" />
+      <img src="https://storage.googleapis.com/onestock-tools-hosting-hwn8eubny/mbousquet/aistudio/UPS.png" className="w-6 h-auto" alt="UPS" />
     )
   }
 ];

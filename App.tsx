@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { Article, SelectionConfig, CustomerDetails, Step, ReturnAction } from './types.ts';
+import { Article, SelectionConfig, CustomerDetails, Step, ReturnAction, ExchangeType } from './types.ts';
 import { ARTICLES, REASONS, SIZES, COLORS, METHODS } from './constants.tsx';
 import Stepper from './components/Stepper.tsx';
 import ArticleCard from './components/ArticleCard.tsx';
@@ -12,6 +12,7 @@ const App: React.FC = () => {
   const [selectedMethod, setSelectedMethod] = useState<string>('');
   const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
     email: 'john.doe@onestock-retail.com',
+    phone: '+44 7700 900077',
     firstName: 'John',
     lastName: 'Doe',
     address: '123 E-Commerce Street',
@@ -38,7 +39,7 @@ const App: React.FC = () => {
     if (!itemConfigs[id]) {
         setItemConfigs(prev => ({
             ...prev,
-            [id]: { action: 'return', reason: REASONS[0] }
+            [id]: { action: 'return', reason: REASONS[0], exchangeType: 'same_model' }
         }));
     }
   }, [itemConfigs]);
@@ -60,16 +61,22 @@ const App: React.FC = () => {
     setCurrentStep(prev => (prev - 1) as Step);
   };
 
+  const InfoBar = ({ text, icon = true }: { text: string; icon?: boolean }) => (
+    <div className="bg-[#f2f2f2] rounded-lg py-3.5 px-5 mb-4 flex items-center gap-4">
+      {icon && (
+        <div className="w-5 h-5 flex items-center justify-center text-[#555]">
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+      )}
+      <p className="text-[15px] font-medium text-[#555]">{text}</p>
+    </div>
+  );
+
   const renderSelectionStep = () => (
     <div className="space-y-4">
-      <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 mb-4 flex items-center gap-3">
-        <div className="w-6 h-6 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-        </div>
-        <p className="text-sm text-gray-600">Select items to return or exchange</p>
-      </div>
+      <InfoBar text="Select items to return or exchange" />
       {ARTICLES.map(article => (
         <ArticleCard 
           key={article.id} 
@@ -83,36 +90,37 @@ const App: React.FC = () => {
 
   const renderConfigurationStep = () => (
     <div className="space-y-6">
-      <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 mb-4 flex items-center gap-3">
-        <p className="text-sm text-gray-600 font-medium">Choose why you are returning or exchanging these items</p>
-      </div>
+      <InfoBar text="Choose why you are returning or exchanging these items" />
       {selectedArticles.map(article => {
         const config = itemConfigs[article.id];
         return (
-          <div key={article.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div key={article.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
             <div className="flex items-center p-4 border-b border-gray-100 bg-gray-50/50">
-                <img src={article.imageUrl} className="w-10 h-10 rounded object-cover mr-3" alt="" />
-                <span className="font-semibold text-gray-700 text-sm">{article.name}</span>
+                <img src={article.imageUrl} className="w-12 h-12 rounded-lg object-cover mr-4 border border-gray-200" alt="" />
+                <div className="flex flex-col">
+                    <span className="font-bold text-gray-800 text-[16px]">{article.name}</span>
+                    <span className="text-[13px] text-gray-500">{article.sku}</span>
+                </div>
             </div>
-            <div className="p-4 space-y-4">
+            <div className="p-5 space-y-5">
               {/* Action Selection */}
               <div className="flex gap-4">
                 <button
                   onClick={() => updateItemConfig(article.id, { action: 'return' })}
-                  className={`flex-1 py-2 px-4 rounded-md border text-sm font-medium transition-all ${
+                  className={`flex-1 py-3 px-4 rounded-lg border text-[14px] font-bold transition-all ${
                     config.action === 'return' 
                     ? 'border-[#20B2AA] bg-[#20B2AA]/5 text-[#20B2AA]' 
-                    : 'border-gray-200 text-gray-500'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300'
                   }`}
                 >
                   Return for refund
                 </button>
                 <button
                   onClick={() => updateItemConfig(article.id, { action: 'exchange' })}
-                  className={`flex-1 py-2 px-4 rounded-md border text-sm font-medium transition-all ${
+                  className={`flex-1 py-3 px-4 rounded-lg border text-[14px] font-bold transition-all ${
                     config.action === 'exchange' 
                     ? 'border-[#20B2AA] bg-[#20B2AA]/5 text-[#20B2AA]' 
-                    : 'border-gray-200 text-gray-500'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300'
                   }`}
                 >
                   Exchange
@@ -120,10 +128,11 @@ const App: React.FC = () => {
               </div>
 
               {/* Reason Selection */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase text-gray-400">Reason</label>
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold uppercase text-gray-400 tracking-wider">Reason</label>
                 <select 
-                  className="w-full p-2.5 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-[#20B2AA]"
+                  className="w-full p-3 bg-white border border-gray-200 rounded-lg text-[15px] outline-none focus:border-[#20B2AA] appearance-none"
+                  style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%23888\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1.25rem' }}
                   value={config.reason}
                   onChange={(e) => updateItemConfig(article.id, { reason: e.target.value })}
                 >
@@ -133,27 +142,78 @@ const App: React.FC = () => {
 
               {/* Exchange Options */}
               {config.action === 'exchange' && (
-                <div className="grid grid-cols-2 gap-4 pt-2">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase text-gray-400">New Size</label>
-                    <select 
-                      className="w-full p-2.5 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-[#20B2AA]"
-                      value={config.exchangeSize || article.size}
-                      onChange={(e) => updateItemConfig(article.id, { exchangeSize: e.target.value })}
+                <div className="space-y-4 pt-1 border-t border-gray-100 mt-2">
+                  <div className="flex p-1 bg-gray-100 rounded-lg">
+                    <button
+                      onClick={() => updateItemConfig(article.id, { exchangeType: 'same_model' })}
+                      className={`flex-1 py-1.5 text-[12px] font-bold rounded-md transition-all ${
+                        config.exchangeType === 'same_model' ? 'bg-white shadow-sm text-[#20B2AA]' : 'text-gray-500'
+                      }`}
                     >
-                      {SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase text-gray-400">New Color</label>
-                    <select 
-                      className="w-full p-2.5 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-[#20B2AA]"
-                      value={config.exchangeColor || article.color}
-                      onChange={(e) => updateItemConfig(article.id, { exchangeColor: e.target.value })}
+                      Same model
+                    </button>
+                    <button
+                      onClick={() => updateItemConfig(article.id, { exchangeType: 'different_model' })}
+                      className={`flex-1 py-1.5 text-[12px] font-bold rounded-md transition-all ${
+                        config.exchangeType === 'different_model' ? 'bg-white shadow-sm text-[#20B2AA]' : 'text-gray-500'
+                      }`}
                     >
-                      {COLORS.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                      Different model
+                    </button>
                   </div>
+
+                  {config.exchangeType === 'same_model' ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold uppercase text-gray-400 tracking-wider">New Size</label>
+                        <select 
+                          className="w-full p-3 bg-white border border-gray-200 rounded-lg text-[15px] outline-none focus:border-[#20B2AA] appearance-none"
+                          style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%23888\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1.25rem' }}
+                          value={config.exchangeSize || article.size}
+                          onChange={(e) => updateItemConfig(article.id, { exchangeSize: e.target.value })}
+                        >
+                          {SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold uppercase text-gray-400 tracking-wider">New Color</label>
+                        <select 
+                          className="w-full p-3 bg-white border border-gray-200 rounded-lg text-[15px] outline-none focus:border-[#20B2AA] appearance-none"
+                          style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%23888\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1.25rem' }}
+                          value={config.exchangeColor || article.color}
+                          onChange={(e) => updateItemConfig(article.id, { exchangeColor: e.target.value })}
+                        >
+                          {COLORS.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-bold uppercase text-gray-400 tracking-wider">Select new article</label>
+                      <div className="grid grid-cols-1 gap-2">
+                        {ARTICLES.filter(a => a.id !== article.id).map(altArticle => (
+                          <div 
+                            key={altArticle.id}
+                            onClick={() => updateItemConfig(article.id, { exchangeArticleId: altArticle.id })}
+                            className={`flex items-center p-2 border rounded-lg cursor-pointer transition-all ${
+                              config.exchangeArticleId === altArticle.id ? 'border-[#20B2AA] bg-[#20B2AA]/5' : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            <img src={altArticle.imageUrl} className="w-10 h-10 rounded object-cover mr-3" alt="" />
+                            <div className="flex-grow">
+                              <p className="text-[13px] font-bold text-gray-800">{altArticle.name}</p>
+                              <p className="text-[11px] text-gray-500">{altArticle.color} | {altArticle.size}</p>
+                            </div>
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                              config.exchangeArticleId === altArticle.id ? 'border-[#20B2AA] bg-[#20B2AA]' : 'border-gray-300'
+                            }`}>
+                              {config.exchangeArticleId === altArticle.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -165,28 +225,26 @@ const App: React.FC = () => {
 
   const renderMethodStep = () => (
     <div className="space-y-3">
-      <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 mb-4 flex items-center gap-3">
-        <p className="text-sm text-gray-600">Select the return method</p>
-      </div>
+      <InfoBar text="Select the return method" />
       {METHODS.map(method => (
         <div
           key={method.id}
           onClick={() => setSelectedMethod(method.id)}
-          className={`group flex items-center p-5 bg-white border rounded-lg cursor-pointer transition-all hover:border-[#20B2AA] ${
+          className={`group flex items-center p-5 bg-white border rounded-lg cursor-pointer transition-all hover:border-[#20B2AA] shadow-sm ${
             selectedMethod === method.id ? 'border-[#20B2AA] ring-2 ring-[#20B2AA]/5' : 'border-gray-200'
           }`}
         >
-          <div className="mr-5 text-gray-500 group-hover:text-[#20B2AA]">
+          <div className="mr-5 text-gray-400 group-hover:text-[#20B2AA] transition-colors">
             {method.icon}
           </div>
           <div className="flex-grow">
-            <h4 className="text-[15px] font-semibold text-gray-800">{method.label}</h4>
-            <p className="text-sm text-gray-500">{method.description}</p>
+            <h4 className="text-[16px] font-bold text-gray-800 leading-tight">{method.label}</h4>
+            <p className="text-[14px] text-gray-500 mt-1">{method.description}</p>
           </div>
-          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+          <div className={`w-[22px] h-[22px] rounded-full border-2 flex items-center justify-center transition-all ${
             selectedMethod === method.id ? 'border-[#20B2AA]' : 'border-gray-300'
           }`}>
-            {selectedMethod === method.id && <div className="w-2.5 h-2.5 rounded-full bg-[#20B2AA]" />}
+            {selectedMethod === method.id && <div className="w-[10px] h-[10px] rounded-full bg-[#20B2AA]" />}
           </div>
         </div>
       ))}
@@ -194,77 +252,86 @@ const App: React.FC = () => {
   );
 
   const renderValidationStep = () => (
-    <div className="space-y-6">
-      <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 flex items-center gap-3">
-        <p className="text-sm text-gray-600 font-medium text-center w-full">Please confirm your contact and shipping details</p>
-      </div>
+    <div className="space-y-4">
+      <InfoBar text="Please confirm your contact and shipping details" />
       
-      <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-5">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase text-gray-400">First Name</label>
+      <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3 shadow-sm">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">First Name</label>
             <input 
               type="text" 
-              className="w-full p-2.5 bg-gray-50 border border-gray-100 rounded-md text-sm outline-none focus:bg-white focus:border-[#20B2AA]"
+              className="w-full p-2 bg-[#f9fafb] border border-gray-200 rounded-md text-[13px] outline-none focus:bg-white focus:border-[#20B2AA] transition-all"
               value={customerDetails.firstName}
               onChange={(e) => setCustomerDetails(prev => ({ ...prev, firstName: e.target.value }))}
             />
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase text-gray-400">Last Name</label>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Last Name</label>
             <input 
               type="text" 
-              className="w-full p-2.5 bg-gray-50 border border-gray-100 rounded-md text-sm outline-none focus:bg-white focus:border-[#20B2AA]"
+              className="w-full p-2 bg-[#f9fafb] border border-gray-200 rounded-md text-[13px] outline-none focus:bg-white focus:border-[#20B2AA] transition-all"
               value={customerDetails.lastName}
               onChange={(e) => setCustomerDetails(prev => ({ ...prev, lastName: e.target.value }))}
             />
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase text-gray-400">Email Address</label>
-          <input 
-            type="email" 
-            className="w-full p-2.5 bg-gray-50 border border-gray-100 rounded-md text-sm outline-none focus:bg-white focus:border-[#20B2AA]"
-            value={customerDetails.email}
-            onChange={(e) => setCustomerDetails(prev => ({ ...prev, email: e.target.value }))}
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Email</label>
+            <input 
+              type="email" 
+              className="w-full p-2 bg-[#f9fafb] border border-gray-200 rounded-md text-[13px] outline-none focus:bg-white focus:border-[#20B2AA] transition-all"
+              value={customerDetails.email}
+              onChange={(e) => setCustomerDetails(prev => ({ ...prev, email: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Phone</label>
+            <input 
+              type="tel" 
+              className="w-full p-2 bg-[#f9fafb] border border-gray-200 rounded-md text-[13px] outline-none focus:bg-white focus:border-[#20B2AA] transition-all"
+              value={customerDetails.phone}
+              onChange={(e) => setCustomerDetails(prev => ({ ...prev, phone: e.target.value }))}
+            />
+          </div>
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase text-gray-400">Shipping Address</label>
-          <textarea 
-            rows={2}
-            className="w-full p-2.5 bg-gray-50 border border-gray-100 rounded-md text-sm outline-none focus:bg-white focus:border-[#20B2AA]"
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Address</label>
+          <input 
+            type="text"
+            className="w-full p-2 bg-[#f9fafb] border border-gray-200 rounded-md text-[13px] outline-none focus:bg-white focus:border-[#20B2AA] transition-all"
             value={customerDetails.address}
             onChange={(e) => setCustomerDetails(prev => ({ ...prev, address: e.target.value }))}
           />
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase text-gray-400">City</label>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">City</label>
             <input 
               type="text" 
-              className="w-full p-2.5 bg-gray-50 border border-gray-100 rounded-md text-sm outline-none focus:bg-white focus:border-[#20B2AA]"
+              className="w-full p-2 bg-[#f9fafb] border border-gray-200 rounded-md text-[13px] outline-none focus:bg-white focus:border-[#20B2AA] transition-all"
               value={customerDetails.city}
               onChange={(e) => setCustomerDetails(prev => ({ ...prev, city: e.target.value }))}
             />
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase text-gray-400">Zip Code</label>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Zip</label>
             <input 
               type="text" 
-              className="w-full p-2.5 bg-gray-50 border border-gray-100 rounded-md text-sm outline-none focus:bg-white focus:border-[#20B2AA]"
+              className="w-full p-2 bg-[#f9fafb] border border-gray-200 rounded-md text-[13px] outline-none focus:bg-white focus:border-[#20B2AA] transition-all"
               value={customerDetails.zipCode}
               onChange={(e) => setCustomerDetails(prev => ({ ...prev, zipCode: e.target.value }))}
             />
           </div>
-          <div className="space-y-1.5 col-span-2 md:col-span-1">
-            <label className="text-xs font-semibold uppercase text-gray-400">Country</label>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Country</label>
             <input 
               type="text" 
-              className="w-full p-2.5 bg-gray-50 border border-gray-100 rounded-md text-sm outline-none focus:bg-white focus:border-[#20B2AA]"
+              className="w-full p-2 bg-[#f9fafb] border border-gray-200 rounded-md text-[13px] outline-none focus:bg-white focus:border-[#20B2AA] transition-all"
               value={customerDetails.country}
               onChange={(e) => setCustomerDetails(prev => ({ ...prev, country: e.target.value }))}
             />
@@ -316,7 +383,7 @@ const App: React.FC = () => {
               {currentStep > Step.Selection && (
                 <button 
                   onClick={handleBack}
-                  className="px-6 py-2.5 border border-gray-200 text-gray-600 font-bold rounded hover:bg-gray-50 transition-colors"
+                  className="px-6 py-2.5 border border-gray-200 text-gray-600 font-bold rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Back
                 </button>
@@ -324,14 +391,14 @@ const App: React.FC = () => {
             </div>
             <div className="flex gap-3">
               <button 
-                className="px-6 py-2.5 border border-gray-200 text-gray-600 font-bold rounded hover:bg-gray-50 transition-colors"
+                className="px-6 py-2.5 border border-gray-200 text-gray-600 font-bold rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button 
                 onClick={handleNext}
                 disabled={currentStep === Step.Selection && selectedItemIds.length === 0}
-                className={`px-8 py-2.5 bg-[#20B2AA] text-white font-bold rounded hover:bg-[#16A085] transition-all ${
+                className={`px-8 py-2.5 bg-[#20B2AA] text-white font-bold rounded-lg hover:bg-[#16A085] transition-all ${
                     (currentStep === Step.Selection && selectedItemIds.length === 0) ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
