@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Article } from './types';
 
@@ -19,7 +18,7 @@ export const ARTICLES: Article[] = [
     id: '1006255002072',
     name: 'T-shirt short sleeves',
     price: 9.99,
-    currency: 'Grey',
+    currency: '£',
     color: 'Grey',
     size: 'S',
     sku: '1006255002072',
@@ -36,6 +35,18 @@ export const ARTICLES: Article[] = [
     size: 'M',
     sku: '1006255001082',
     imageUrl: 'https://storage.googleapis.com/onestock-tools-hosting-hwn8eubny/mbousquet/aistudio/15707351_WH.jpg',
+    status: 'Fulfilled',
+    quantity: 1
+  },
+  {
+    id: '1006102405490',
+    name: 'Round-neck t-shirt',
+    price: 12.99,
+    currency: '£',
+    color: 'Red',
+    size: 'S',
+    sku: '1006102405490',
+    imageUrl: 'https://storage.googleapis.com/onestock-tools-hosting-hwn8eubny/mbousquet/aistudio/15719762_RD.jpg',
     status: 'Fulfilled',
     quantity: 1
   }

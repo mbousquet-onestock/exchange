@@ -10,6 +10,7 @@ const App: React.FC = () => {
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [itemConfigs, setItemConfigs] = useState<Record<string, SelectionConfig>>({});
   const [selectedMethod, setSelectedMethod] = useState<string>('');
+  const [exchangeSearchQuery, setExchangeSearchQuery] = useState<string>('');
   const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
     email: 'john.doe@onestock-retail.com',
     phone: '+44 7700 900077',
@@ -20,6 +21,12 @@ const App: React.FC = () => {
     zipCode: 'M1 4BT',
     country: 'United Kingdom'
   });
+
+  // Articles available in the user's order to be returned/exchanged
+  const orderArticles = useMemo(() => 
+    ARTICLES.filter(a => a.id !== '1006102405490'),
+    []
+  );
 
   const selectedArticles = useMemo(() => 
     ARTICLES.filter(a => selectedItemIds.includes(a.id)),
@@ -77,7 +84,7 @@ const App: React.FC = () => {
   const renderSelectionStep = () => (
     <div className="space-y-4">
       <InfoBar text="Select items to return or exchange" />
-      {ARTICLES.map(article => (
+      {orderArticles.map(article => (
         <ArticleCard 
           key={article.id} 
           article={article} 
@@ -93,13 +100,22 @@ const App: React.FC = () => {
       <InfoBar text="Choose why you are returning or exchanging these items" />
       {selectedArticles.map(article => {
         const config = itemConfigs[article.id];
+        const exchangeArticle = config.exchangeArticleId ? ARTICLES.find(a => a.id === config.exchangeArticleId) : null;
+        
+        // Filter logic for different model search - includes ALL ARTICLES except current one
+        const filteredArticles = ARTICLES.filter(a => 
+          a.id !== article.id && 
+          (a.name.toLowerCase().includes(exchangeSearchQuery.toLowerCase()) || 
+           a.sku.toLowerCase().includes(exchangeSearchQuery.toLowerCase()))
+        );
+
         return (
           <div key={article.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
             <div className="flex items-center p-4 border-b border-gray-100 bg-gray-50/50">
                 <img src={article.imageUrl} className="w-12 h-12 rounded-lg object-cover mr-4 border border-gray-200" alt="" />
                 <div className="flex flex-col">
                     <span className="font-bold text-gray-800 text-[16px]">{article.name}</span>
-                    <span className="text-[13px] text-gray-500">{article.sku}</span>
+                    <span className="text-[13px] text-gray-500">{article.sku} • {article.currency}{article.price}</span>
                 </div>
             </div>
             <div className="p-5 space-y-5">
@@ -188,10 +204,22 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      <label className="text-[11px] font-bold uppercase text-gray-400 tracking-wider">Select new article</label>
-                      <div className="grid grid-cols-1 gap-2">
-                        {ARTICLES.filter(a => a.id !== article.id).map(altArticle => (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="Search articles..."
+                          className="w-full p-2.5 pl-9 bg-gray-50 border border-gray-200 rounded-lg text-[13px] outline-none focus:border-[#20B2AA] focus:bg-white transition-all"
+                          value={exchangeSearchQuery}
+                          onChange={(e) => setExchangeSearchQuery(e.target.value)}
+                        />
+                        <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2 max-h-[220px] overflow-y-auto pr-1">
+                        {filteredArticles.length > 0 ? filteredArticles.map(altArticle => (
                           <div 
                             key={altArticle.id}
                             onClick={() => updateItemConfig(article.id, { exchangeArticleId: altArticle.id })}
@@ -199,10 +227,10 @@ const App: React.FC = () => {
                               config.exchangeArticleId === altArticle.id ? 'border-[#20B2AA] bg-[#20B2AA]/5' : 'border-gray-200 hover:border-gray-300'
                             }`}
                           >
-                            <img src={altArticle.imageUrl} className="w-10 h-10 rounded object-cover mr-3" alt="" />
+                            <img src={altArticle.imageUrl} className="w-10 h-10 rounded object-cover mr-3 border border-gray-100" alt="" />
                             <div className="flex-grow">
                               <p className="text-[13px] font-bold text-gray-800">{altArticle.name}</p>
-                              <p className="text-[11px] text-gray-500">{altArticle.color} | {altArticle.size}</p>
+                              <p className="text-[11px] text-gray-500">{altArticle.color} | {altArticle.size} | {altArticle.currency}{altArticle.price}</p>
                             </div>
                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
                               config.exchangeArticleId === altArticle.id ? 'border-[#20B2AA] bg-[#20B2AA]' : 'border-gray-300'
@@ -210,8 +238,39 @@ const App: React.FC = () => {
                               {config.exchangeArticleId === altArticle.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                             </div>
                           </div>
-                        ))}
+                        )) : (
+                          <p className="text-center py-4 text-gray-400 text-[13px]">No articles found.</p>
+                        )}
                       </div>
+
+                      {exchangeArticle && (
+                        <div className={`p-3 rounded-lg border flex gap-3 items-center ${
+                          exchangeArticle.price > article.price ? 'bg-orange-50 border-orange-100 text-orange-800' : 
+                          exchangeArticle.price < article.price ? 'bg-green-50 border-green-100 text-green-800' : 
+                          'bg-gray-50 border-gray-100 text-gray-600'
+                        }`}>
+                          <div className="flex-shrink-0">
+                            {exchangeArticle.price > article.price ? (
+                              <svg className="w-5 h-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            ) : (
+                              <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            )}
+                          </div>
+                          <p className="text-[12px] font-medium leading-snug">
+                            {exchangeArticle.price > article.price ? (
+                              <>The new item is more expensive. A <strong>Pay by Link</strong> for <strong>{article.currency}{(exchangeArticle.price - article.price).toFixed(2)}</strong> will be sent to you once your return is processed.</>
+                            ) : exchangeArticle.price < article.price ? (
+                              <>The new item is cheaper. A refund of <strong>{article.currency}{(article.price - exchangeArticle.price).toFixed(2)}</strong> will be issued to your original payment method after we receive your item.</>
+                            ) : (
+                              <>The items have the same price. No additional payment or refund is required.</>
+                            )}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
