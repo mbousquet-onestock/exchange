@@ -1,0 +1,5 @@
+{
+  "name": "OneStock Exchange",
+  "description": "A sleek, responsive returns and exchanges application designed with the OneStock design system, featuring a 4-step workflow for article selection, configuration, shipping method, and customer validation.",
+  "requestFramePermissions": []
+}
