@@ -1,9 +1,9 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { Article, SelectionConfig, CustomerDetails, Step, ReturnAction } from './types';
-import { ARTICLES, REASONS, SIZES, COLORS, METHODS } from './constants';
-import Stepper from './components/Stepper';
-import ArticleCard from './components/ArticleCard';
+import { Article, SelectionConfig, CustomerDetails, Step, ReturnAction } from './types.ts';
+import { ARTICLES, REASONS, SIZES, COLORS, METHODS } from './constants.tsx';
+import Stepper from './components/Stepper.tsx';
+import ArticleCard from './components/ArticleCard.tsx';
 
 const App: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<Step>(Step.Selection);
@@ -296,8 +296,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] flex flex-col">
-      {/* Header removed as requested */}
-
       {/* Stepper */}
       {currentStep !== Step.Confirmation && <Stepper currentStep={currentStep} />}
 

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Article } from '../types';
+import { Article } from '../types.ts';
 
 interface ArticleCardProps {
   article: Article;
