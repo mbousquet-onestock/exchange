@@ -1,44 +1,48 @@
 
-export type ReturnAction = 'return' | 'exchange';
-export type ExchangeType = 'same_model' | 'different_model';
+export interface Condition {
+  id: string;
+  field: string;
+  operator: string;
+  value: string;
+  joiner?: 'AND' | 'OR';
+  infoFieldName?: string;
+  infoFieldType?: string;
+}
 
-export interface Article {
+export interface Scenario {
   id: string;
   name: string;
-  price: number;
-  currency: string;
-  color: string;
-  size: string;
+  description: string;
+  rules: string[];
+  metrics: {
+    fulfillmentRate: number;
+    shippingCost: number;
+    deliveryTime: number;
+    carbonFootprint: number;
+    orderCount: number;
+    itemCount: number;
+  };
+  lastExecuted?: string;
+  nextExecution?: string;
+  status?: 'Active' | 'Draft' | 'Scheduled';
+}
+
+export interface Order {
+  id: string;
+  client: string;
+  priority: 'P1' | 'P2' | 'P3';
   sku: string;
-  imageUrl: string;
-  status: string;
   quantity: number;
-}
-
-export interface SelectionConfig {
-  action: ReturnAction;
-  reason: string;
-  exchangeType?: ExchangeType;
-  exchangeSize?: string;
-  exchangeColor?: string;
-  exchangeArticleId?: string;
-}
-
-export interface CustomerDetails {
-  email: string;
-  phone: string;
-  firstName: string;
-  lastName: string;
-  address: string;
-  city: string;
-  zipCode: string;
-  country: string;
+  date: string;
+  channel: string;
+  status: string;
+  proposedStockPoint?: string;
 }
 
 export enum Step {
-  Selection = 1,
-  Configuration = 2,
-  Method = 3,
-  Validation = 4,
-  Confirmation = 5
+  StrategyManagement = 0,
+  OrderSelection = 1,
+  OrchestrationScenarios = 2,
+  ResultsVisualization = 3,
+  Comparison = 4
 }

@@ -1,62 +1,52 @@
 
 import React from 'react';
-import { Step } from '../types.ts';
+import { Step } from '../types';
 
 interface StepperProps {
   currentStep: Step;
 }
 
-const Stepper: React.FC<StepperProps> = ({ currentStep }) => {
+export const Stepper: React.FC<StepperProps> = ({ currentStep }) => {
   const steps = [
-    { id: Step.Selection, label: 'Items' },
-    { id: Step.Configuration, label: 'Options' },
-    { id: Step.Method, label: 'Method' },
-    { id: Step.Validation, label: 'Validation' }
+    { id: 1, label: 'Order Selection' },
+    { id: 2, label: 'Orchestration Scenarios' },
+    { id: 3, label: 'Results Visualization' },
+    { id: 4, label: 'Comparison' },
   ];
 
   return (
-    <div className="w-full py-3 mb-2 border-b border-gray-100 bg-white">
-      <div className="max-w-xl mx-auto flex items-center justify-between px-4 relative">
-        {/* Progress Line */}
-        <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-200 -translate-y-[1.2rem] z-0 px-12">
-            <div 
-                className="h-full bg-[#20B2AA] transition-all duration-300"
-                style={{ width: `${((currentStep - 1) / (steps.length - 1)) * 100}%` }}
-            />
-        </div>
-
-        {steps.map((step, idx) => {
-          const isActive = currentStep === step.id;
-          const isCompleted = currentStep > step.id;
-
-          return (
-            <div key={step.id} className="flex flex-col items-center relative z-10">
+    <div className="w-full py-6">
+      <div className="flex items-center justify-between">
+        {steps.map((step, idx) => (
+          <React.Fragment key={step.id}>
+            <div className="flex flex-col items-center flex-1">
               <div
-                className={`w-6 h-6 rounded-full border-[3px] flex items-center justify-center transition-all duration-300 ${
-                  isActive
-                    ? 'border-[#20B2AA] bg-white ring-2 ring-[#20B2AA]/10'
-                    : isCompleted
-                    ? 'border-[#20B2AA] bg-[#20B2AA]'
-                    : 'border-gray-200 bg-white'
+                className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 border-2 ${
+                  currentStep === step.id
+                    ? 'bg-[#00A79D] text-white border-[#00A79D]'
+                    : currentStep > step.id
+                    ? 'bg-emerald-50 text-[#00A79D] border-[#00A79D]'
+                    : 'bg-white text-slate-400 border-slate-200'
                 }`}
               >
-                {isCompleted ? (
-                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" />
-                  </svg>
+                {currentStep > step.id ? (
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
                 ) : (
-                  <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-[#20B2AA]' : 'bg-transparent'}`} />
+                  step.id
                 )}
               </div>
-              <span className={`mt-1 text-[11px] font-bold ${isActive ? 'text-[#333]' : 'text-gray-400'}`}>
+              <span className={`text-[10px] mt-2 font-semibold uppercase tracking-wide text-center px-1 ${
+                currentStep === step.id ? 'text-slate-900' : 'text-slate-400'
+              }`}>
                 {step.label}
               </span>
             </div>
-          );
-        })}
+            {idx < steps.length - 1 && (
+              <div className={`h-[2px] flex-1 -mt-5 ${currentStep > step.id ? 'bg-[#00A79D]' : 'bg-slate-200'}`} />
+            )}
+          </React.Fragment>
+        ))}
       </div>
     </div>
   );
 };
-
-export default Stepper;

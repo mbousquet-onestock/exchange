@@ -1,5 +1,5 @@
 {
-  "name": "OneStock Returns Portal",
-  "description": "A sleek, responsive returns and exchanges application designed with the OneStock design system. This is a static frontend implementation with no external API dependencies.",
+  "name": "OneStock Wave Orchestrator",
+  "description": "An advanced order orchestration management platform for retail logistics, allowing users to select orders, define orchestration scenarios, simulate outcomes, and compare results for optimal fulfillment strategy selection.",
   "requestFramePermissions": []
 }
