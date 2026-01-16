@@ -1,89 +1,86 @@
+import React from 'react';
+import { Article } from './types';
 
-import { Order, Scenario } from './types';
-
-export const COLORS = {
-  primary: '#00A79D', // OneStock Teal
-  secondary: '#2D3E50', // Dark Blue
-  accent: '#F39C12', // Orange
-  success: '#27AE60',
-  error: '#E74C3C',
-};
-
-export const MOCK_ORDERS: Order[] = [
-  { id: 'ORD-001', client: 'John Doe', priority: 'P1', sku: 'NIKE-AF1-01', quantity: 1, date: '2023-10-25', channel: 'Retail', status: 'Pending' },
-  { id: 'ORD-002', client: 'Jane Smith', priority: 'P1', sku: 'ADIDAS-SST-02', quantity: 2, date: '2023-10-25', channel: 'E-commerce', status: 'Pending' },
-  { id: 'ORD-003', client: 'Alice Johnson', priority: 'P2', sku: 'PUMA-RSX-03', quantity: 1, date: '2023-10-24', channel: 'Retail', status: 'Pending' },
-  { id: 'ORD-004', client: 'Bob Brown', priority: 'P3', sku: 'VANS-OLD-04', quantity: 3, date: '2023-10-24', channel: 'E-commerce', status: 'Pending' },
-  { id: 'ORD-005', client: 'Charlie Wilson', priority: 'P1', sku: 'REEBOK-CL-05', quantity: 1, date: '2023-10-25', channel: 'Retail', status: 'Pending' },
-  { id: 'ORD-006', client: 'Diana Prince', priority: 'P2', sku: 'ASICS-GL3-06', quantity: 1, date: '2023-10-25', channel: 'Retail', status: 'Pending' },
-  { id: 'ORD-007', client: 'Edward Norton', priority: 'P1', sku: 'NEWBAL-574-07', quantity: 2, date: '2023-10-25', channel: 'E-commerce', status: 'Pending' },
-];
-
-export const ORCHESTRATION_STRATEGIES = [
-  { id: 'os-1', name: 'Click & Collect - Advanced', rulesCount: 7 },
-  { id: 'os-2', name: 'Home Delivery - Despacho standard - ES', rulesCount: 9 },
-  { id: 'os-3', name: 'Home Delivery - Standard Orders', rulesCount: 8 },
-  { id: 'os-4', name: 'Home Delivery - France', rulesCount: 5 },
-  { id: 'os-5', name: 'Spare Parts', rulesCount: 6 },
-  { id: 'os-6', name: 'Home Delivery - Standard - Italia', rulesCount: 4 },
-];
-
-export const MOCK_SCENARIOS: Scenario[] = [
+export const ARTICLES: Article[] = [
   {
-    id: 'SC-1',
-    name: 'Priority order',
-    description: 'Prioritizes high-priority P1 orders and critical customer segments first.',
-    rules: ['Priority P1 orders first', 'Express shipping only', 'Minimal split shipments'],
-    metrics: { fulfillmentRate: 85, shippingCost: 4.5, deliveryTime: 3.2, carbonFootprint: 1.2, orderCount: 450, itemCount: 1205 },
-    lastExecuted: '2023-10-24 08:00',
-    nextExecution: '2023-10-25 08:00',
-    status: 'Active'
+    id: '1006255003062',
+    name: 'T-shirt short sleeves',
+    price: 9.99,
+    currency: '£',
+    color: 'Black',
+    size: 'M',
+    sku: '1006255003062',
+    imageUrl: 'https://storage.googleapis.com/onestock-tools-hosting-hwn8eubny/mbousquet/aistudio/15707351_BK.jpg',
+    status: 'Fulfilled',
+    quantity: 1
   },
   {
-    id: 'SC-2',
-    name: 'UPS Orders',
-    description: 'Dedicated routing logic for orders assigned to UPS carrier services.',
-    rules: ['UPS Ground routing', 'Specific UPS packaging labels', 'Weight-based tiering'],
-    metrics: { fulfillmentRate: 92, shippingCost: 7.8, deliveryTime: 1.1, carbonFootprint: 2.5, orderCount: 380, itemCount: 940 },
-    lastExecuted: '2023-10-24 10:00',
-    nextExecution: '2023-10-25 10:00',
-    status: 'Active'
+    id: '1006255002072',
+    name: 'T-shirt short sleeves',
+    price: 9.99,
+    currency: '£',
+    color: 'Grey',
+    size: 'S',
+    sku: '1006255002072',
+    imageUrl: 'https://storage.googleapis.com/onestock-tools-hosting-hwn8eubny/mbousquet/aistudio/15707351_GY.jpg',
+    status: 'Fulfilled',
+    quantity: 1
   },
   {
-    id: 'SC-3',
-    name: 'DHL Orders',
-    description: 'International and express routing specifically optimized for DHL worldwide network.',
-    rules: ['DHL Express only', 'Cross-border compliance check', 'Real-time rate calculation'],
-    metrics: { fulfillmentRate: 78, shippingCost: 5.2, deliveryTime: 4.5, carbonFootprint: 0.6, orderCount: 290, itemCount: 710 },
-    lastExecuted: '2023-10-23 09:00',
-    status: 'Draft'
+    id: '1006255001082',
+    name: 'T-shirt short sleeves',
+    price: 9.99,
+    currency: '£',
+    color: 'White',
+    size: 'M',
+    sku: '1006255001082',
+    imageUrl: 'https://storage.googleapis.com/onestock-tools-hosting-hwn8eubny/mbousquet/aistudio/15707351_WH.jpg',
+    status: 'Fulfilled',
+    quantity: 1
+  },
+  {
+    id: '1006102405490',
+    name: 'Round-neck t-shirt',
+    price: 12.99,
+    currency: '£',
+    color: 'Red',
+    size: 'S',
+    sku: '1006102405490',
+    imageUrl: 'https://storage.googleapis.com/onestock-tools-hosting-hwn8eubny/mbousquet/aistudio/15719762_RD.jpg',
+    status: 'Fulfilled',
+    quantity: 1
   }
 ];
 
-export const FIELDS = [
-  'Carrier information',
-  'Carrier option',
-  'Customer information',
-  'Delivery method',
-  'Delivery Promise',
-  'Destination country',
-  'Destination information',
-  'Destination state',
-  'Destination zipcode',
-  'Item information',
-  'Item quantity',
-  'Item unit price',
-  'Items price',
-  'Order delivery type',
-  'Order information',
-  'Order original price',
-  'Order price',
-  'Order sales channel',
-  'Order type',
-  'Origin country',
-  'Origin information',
-  'Origin state',
-  'Origin zipcode'
+export const REASONS = [
+  "Too small",
+  "Too big",
+  "Damaged item",
+  "Color not as expected",
+  "Style doesn't suit me",
+  "Changed my mind"
 ];
 
-export const OPERATORS = ['is', 'is not', 'contains', 'in', 'not in', 'greater than', 'less than'];
+export const SIZES = ['XS', 'S', 'M', 'L', 'XL'];
+export const COLORS = ['Black', 'Grey', 'White', 'Navy', 'Red'];
+
+export const METHODS = [
+  {
+    id: 'in-store',
+    label: 'In store return',
+    description: 'Drop off at any of our retail locations.',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+      </svg>
+    )
+  },
+  {
+    id: 'ups',
+    label: 'UPS: Standard delivery',
+    description: 'Drop off at a UPS Access Point.',
+    icon: (
+      <img src="https://storage.googleapis.com/onestock-tools-hosting-hwn8eubny/mbousquet/aistudio/UPS.png" className="w-6 h-auto" alt="UPS" />
+    )
+  }
+];
