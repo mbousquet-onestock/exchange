@@ -21,6 +21,8 @@ export interface OnestockConfig {
   exchangeOrderType: string;
   salesChannel: string;
   currency: string;
+  // Language of the item features (settings key `default_lang`)
+  lang: string;
   // Value of the `environment` column in the settings / api_logs tables
   environment: string;
   // Settings key `api_logs_enabled`: write every OneStock call to api_logs
@@ -28,16 +30,24 @@ export interface OnestockConfig {
   env: Env;
 }
 
+// API root + version (https://<host>/v3), the root may already contain it
+const withVersion = (root: string) => {
+  const base = root.replace(/\/+$/, '');
+  return /\/v\d+$/.test(base) ? base : `${base}/v3`;
+};
+
 export const getConfig = (env: Env = process.env): OnestockConfig => ({
-  baseUrl: (env.ONESTOCK_API_URL || 'https://api.onestock-retail.com').replace(/\/$/, ''),
+  baseUrl: withVersion(env.ONESTOCK_API_URL || 'https://api.onestock-retail.com'),
   siteId: env.ONESTOCK_SITE_ID || '',
   userId: env.ONESTOCK_USER_ID || '',
   password: env.ONESTOCK_PASSWORD || '',
   exchangeAttribute: env.ONESTOCK_EXCHANGE_ATTRIBUTE || 'exchange_items',
   exchangeOrderPrefix: env.ONESTOCK_EXCHANGE_ORDER_PREFIX || 'EXC-',
-  exchangeOrderType: env.ONESTOCK_EXCHANGE_ORDER_TYPE || 'exchange',
+  // OneStock order types: ffs (home delivery), ckc, ropis, ois
+  exchangeOrderType: env.ONESTOCK_EXCHANGE_ORDER_TYPE || 'ffs',
   salesChannel: env.ONESTOCK_SALES_CHANNEL || 'returns_portal',
   currency: env.ONESTOCK_CURRENCY || 'GBP',
+  lang: env.ONESTOCK_LANG || 'fr',
   environment: env.APP_ENVIRONMENT || 'qualif',
   logsEnabled: false,
   env,
@@ -51,7 +61,8 @@ export const resolveConfig = async (env: Env = process.env): Promise<OnestockCon
   const settings = await loadSettings(env, { siteId: config.siteId, environment: config.environment });
   return {
     ...config,
-    baseUrl: (settings.onestock_api_root || config.baseUrl).replace(/\/$/, ''),
+    baseUrl: withVersion(settings.onestock_api_root || config.baseUrl),
+    lang: settings.default_lang || config.lang,
     logsEnabled: isTruthy(settings.api_logs_enabled),
   };
 };
@@ -97,12 +108,14 @@ const parseJson = (text: string) => {
   }
 };
 
-// fetch() + api_logs entry when logging is enabled in settings
+// fetch() + api_logs entry when logging is enabled in settings.
+// OneStock GET routes take their parameters as a JSON body: fetch() cannot
+// send a body with GET, so they go through POST + X-HTTP-Method-Override.
 const loggedFetch = async (
   config: OnestockConfig,
   method: 'GET' | 'POST',
   url: URL,
-  body?: Record<string, unknown>,
+  body: Record<string, unknown>,
 ): Promise<{ status: number; data: any }> => {
   const started = Date.now();
   let status: number | null = null;
@@ -110,9 +123,12 @@ const loggedFetch = async (
   let error: string | null = null;
   try {
     const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      ...(body ? { body: JSON.stringify(body) } : {}),
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(method === 'GET' ? { 'X-HTTP-Method-Override': 'GET' } : {}),
+      },
+      body: JSON.stringify(body),
     });
     status = res.status;
     data = parseJson(await res.text());
@@ -126,7 +142,7 @@ const loggedFetch = async (
       await writeApiLog(config.env, {
         method,
         url: maskUrl(url),
-        request: body ? maskSecrets(body) : null,
+        request: maskSecrets(body),
         status,
         durationMs: Date.now() - started,
         response: maskSecrets(data),
@@ -146,7 +162,7 @@ const login = async (config: OnestockConfig): Promise<string> => {
   if (cachedToken && cachedToken.key === key && cachedToken.expiresAt > Date.now()) {
     return cachedToken.value;
   }
-  const { status, data } = await loggedFetch(config, 'POST', new URL(`${config.baseUrl}/v3/login`), {
+  const { status, data } = await loggedFetch(config, 'POST', new URL(`${config.baseUrl}/login`), {
     site_id: config.siteId,
     user_id: config.userId,
     password: config.password,
@@ -161,25 +177,15 @@ const call = async (
   config: OnestockConfig,
   method: 'GET' | 'POST',
   path: string,
-  params: Record<string, string> = {},
-  body?: Record<string, unknown>,
+  body: Record<string, unknown> = {},
   retry = true,
 ): Promise<any> => {
   const token = await login(config);
   const url = new URL(`${config.baseUrl}${path}`);
-  if (method === 'GET') {
-    Object.entries({ site_id: config.siteId, token, ...params }).forEach(([k, v]) => url.searchParams.set(k, v));
-  }
-
-  const { status, data } = await loggedFetch(
-    config,
-    method,
-    url,
-    method === 'POST' ? { site_id: config.siteId, token, ...body } : undefined,
-  );
+  const { status, data } = await loggedFetch(config, method, url, { site_id: config.siteId, token, ...body });
   if (status === 401 && retry) {
     cachedToken = null;
-    return call(config, method, path, params, body, false);
+    return call(config, method, path, body, false);
   }
   if (status < 200 || status >= 300) {
     const message = data?.message || data?.error || `OneStock ${method} ${path} failed (${status})`;
@@ -206,42 +212,51 @@ export const parseExchangeAttribute = (value: unknown): string[] => {
   return [];
 };
 
+// Item features names read from the catalog (features are language dependent
+// and every value is an array, e.g. features.fr.name = ["T-shirt"])
+const ITEM_FEATURES = ['name', 'color', 'size', 'price', 'image_url'];
+
+const itemFeatures = (raw: any, lang: string): Record<string, unknown> => {
+  const features = raw?.features || {};
+  // GET /items returns { <lang>: { name: [...] } }, order items return { name: [...] }
+  const byLang = features[lang] || Object.values(features).find(v => v && typeof v === 'object' && !Array.isArray(v));
+  return (byLang as Record<string, unknown>) || features;
+};
+
+const first = (v: unknown) => (Array.isArray(v) ? v[0] : v);
+
 const mapItem = (raw: any, config: OnestockConfig, overrides: Partial<Article> = {}): Article => {
-  const info = raw?.information || {};
+  const f = itemFeatures(raw, config.lang);
   const id = str(pick(raw?.id, raw?.item_id, overrides.id));
-  const currency = str(pick(overrides.currency, info.currency, config.currency));
   return {
     id,
     sku: id,
-    name: str(pick(info.name, raw?.name, info.title, id)),
-    price: Number(pick(overrides.price, info.price, raw?.price, 0)),
-    currency: currencySymbol(currency),
-    color: str(pick(info.color, info.colour, raw?.color)),
-    size: str(pick(info.size, raw?.size)),
-    imageUrl: str(pick(info.image_url, info.image, info.picture, raw?.image_url, raw?.images?.[0])),
-    productId: str(pick(raw?.product_id, info.product_id, info.model, raw?.model)) || undefined,
-    exchangeItemIds: parseExchangeAttribute(pick(info[config.exchangeAttribute], raw?.[config.exchangeAttribute])),
+    name: str(pick(first(f.name), id)),
+    price: Number(pick(overrides.price, first(f.price), 0)),
+    currency: currencySymbol(str(pick(overrides.currency, config.currency))),
+    color: str(first(f.color)),
+    size: str(first(f.size)),
+    imageUrl: str(first(f.image_url)),
+    productId: str(raw?.product_id) || undefined,
+    exchangeItemIds: [...new Set(parseExchangeAttribute(f[config.exchangeAttribute]).flatMap(v => parseExchangeAttribute(v)))],
     status: overrides.status || '',
     quantity: overrides.quantity || 1,
   };
 };
 
-const getItem = async (config: OnestockConfig, itemId: string) => {
-  const data = await call(config, 'GET', `/v3/items/${encodeURIComponent(itemId)}`, {
-    fields: 'id,product_id,information',
+// GET /items filtered on the item ids
+const getItems = async (config: OnestockConfig, ids: string[]): Promise<any[]> => {
+  if (!ids.length) return [];
+  const data = await call(config, 'GET', '/items', {
+    item_ids: ids,
+    filters: { ids },
+    fields: ['product_id'],
+    features: [...ITEM_FEATURES, config.exchangeAttribute],
+    lang: config.lang,
+    pagination: { limit: Math.min(ids.length, 100), start: 0 },
   });
-  return data?.item || data;
-};
-
-const getItems = async (config: OnestockConfig, ids: string[]) => {
-  const results = await Promise.allSettled(ids.map(id => getItem(config, id)));
-  return results.flatMap(r => (r.status === 'fulfilled' && r.value ? [r.value] : []));
-};
-
-const getOrderLines = (order: any): any[] => {
-  if (Array.isArray(order?.line_items)) return order.line_items;
-  if (Array.isArray(order?.line_item_groups)) return order.line_item_groups;
-  return [];
+  const wanted = new Set(ids);
+  return (data?.items || []).filter((i: any) => wanted.has(str(i?.id)));
 };
 
 const mapCustomer = (order: any): CustomerDetails => {
@@ -276,31 +291,42 @@ export const fetchOrder = async (config: OnestockConfig, orderId: string, email?
     };
   }
 
-  const data = await call(config, 'GET', `/v3/orders/${encodeURIComponent(orderId)}`, {
-    fields: 'id,state,customer,delivery,billing_address,line_items,line_item_groups,pricing_details,information',
+  const order = await call(config, 'GET', `/orders/${encodeURIComponent(orderId)}`, {
+    fields: [
+      'id', 'state', 'types', 'customer', 'delivery.type', 'delivery.destination.address', 'pricing_details',
+      'order_items.id', 'order_items.item_id', 'order_items.quantity', 'order_items.pricing_details',
+      'line_item_groups.order_item_id', 'line_item_groups.item_id', 'line_item_groups.quantity', 'line_item_groups.state',
+    ],
   });
-  const order = data?.order || data;
   const customer = mapCustomer(order);
 
   if (email && customer.email && customer.email.toLowerCase() !== email.toLowerCase()) {
     throw new HttpError(404, `Order ${orderId} not found`);
   }
 
-  // Merge identical item ids (OneStock may return one line per unit)
+  // State of each order item, from its line item groups
+  const states = new Map<string, string>();
+  for (const group of order?.line_item_groups || []) {
+    const key = str(pick(group.order_item_id, group.item_id));
+    if (key && group.state && !states.has(key)) states.set(key, str(group.state));
+  }
+
+  // Merge order items sharing the same item id
   const lines = new Map<string, { quantity: number; price?: number; state?: string }>();
-  for (const line of getOrderLines(order)) {
-    const id = str(pick(line.item_id, line.item?.id));
+  for (const orderItem of order?.order_items || []) {
+    const id = str(orderItem.item_id);
     if (!id) continue;
     const prev = lines.get(id);
+    const pricing = orderItem.pricing_details || {};
     lines.set(id, {
-      quantity: (prev?.quantity || 0) + Number(pick(line.quantity, 1)),
-      price: Number(pick(line.pricing_details?.price, line.price, prev?.price, NaN)),
-      state: str(pick(line.state, prev?.state)),
+      quantity: (prev?.quantity || 0) + Number(pick(orderItem.quantity, 1)),
+      price: Number(pick(pricing.unit_price, pricing.price, prev?.price, NaN)),
+      state: str(pick(prev?.state, states.get(str(orderItem.id)), states.get(id), order?.state)),
     });
   }
 
   const items = await getItems(config, [...lines.keys()]);
-  const byId = new Map(items.map(i => [str(pick(i.id, i.item_id)), i]));
+  const byId = new Map(items.map(i => [str(i.id), i]));
   const currency = str(pick(order?.pricing_details?.currency, config.currency));
 
   const articles = [...lines.entries()].map(([id, line]) =>
@@ -327,7 +353,9 @@ export const fetchExchangeOptions = async (config: OnestockConfig, itemId: strin
     return ARTICLES.filter(a => ids.includes(a.id));
   }
 
-  const source = mapItem(await getItem(config, itemId), config);
+  const [raw] = await getItems(config, [itemId]);
+  if (!raw) throw new HttpError(404, `Item ${itemId} not found`);
+  const source = mapItem(raw, config);
   const ids = source.exchangeItemIds?.filter(id => id !== itemId) || [];
   if (!ids.length) return [];
   return (await getItems(config, ids)).map(raw => mapItem(raw, config));
@@ -351,32 +379,32 @@ export const createExchangeOrder = async (
 
   const order = {
     id,
-    types: [config.exchangeOrderType],
+    types: config.exchangeOrderType.split(',').map(t => t.trim()).filter(Boolean),
     sales_channel: config.salesChannel,
     date: Math.floor(Date.now() / 1000),
-    original_order_id: request.originalOrderId,
-    customer: { ...contact, id: c.email },
-    billing_address: address,
-    delivery: { type: 'ship_to_address', destination: { address } },
-    pricing_details: { currency: config.currency, price: total },
-    line_items: lines.map(l => ({
+    customer: contact,
+    delivery: { type: 'standard', destination: { address } },
+    pricing_details: { currency: config.currency, price: total, address },
+    order_items: lines.map(l => ({
       item_id: l.exchangeItemId,
       quantity: l.quantity,
-      pricing_details: { currency: config.currency, price: l.price },
+      pricing_details: { price: l.price * l.quantity, unit_price: l.price },
       information: {
         exchanged_item_id: l.returnedItemId,
         exchange_reason: l.reason,
       },
     })),
     information: {
+      order_kind: 'exchange',
       original_order_id: request.originalOrderId,
       return_method: request.method,
       exchanged_items: lines.map(l => l.returnedItemId).join(','),
     },
   };
 
-  const data = await call(config, 'POST', '/v3/orders', {}, { order });
-  return { id: str(pick(data?.id, data?.order?.id, id)) };
+  // The API answers 204 with an optional { id } body
+  const data = await call(config, 'POST', '/orders', { order });
+  return { id: str(pick(data?.id, id)) };
 };
 
 // ---------------------------------------------------------------------------

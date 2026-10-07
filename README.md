@@ -1,15 +1,20 @@
 # OneStock Returns & Exchanges Portal
 
-Portail de retours / échanges connecté à l'API OneStock (v3) :
+Portail de retours / échanges connecté à l'API OneStock v3 (spec : API interne OneStock, OpenAPI 3.1).
+Les routes GET OneStock prennent leurs paramètres dans un body JSON : elles sont appelées en
+`POST` avec l'en-tête `X-HTTP-Method-Override: GET`.
 
-1. **Articles de la commande** : `GET /v3/orders/{id}` puis `GET /v3/items/{id}` pour chaque ligne.
-2. **Articles d'échange** : lus depuis un nouvel attribut de la fiche produit
-   (`information.exchange_items` par défaut, configurable via `ONESTOCK_EXCHANGE_ATTRIBUTE`).
-   Valeur attendue : un tableau ou une liste séparée par des virgules d'identifiants d'items, ex. `"SKU-M,SKU-L,SKU-ROUGE"`.
-   - *Same model* : variantes ayant le même `product_id` (choix taille / couleur).
+1. **Articles de la commande** : `GET /orders/{id}` (`order_items`, état via `line_item_groups`),
+   puis `GET /items` (`item_ids`, `features` dans la langue `default_lang`).
+2. **Articles d'échange** : lus depuis un nouvel attribut (feature) de la fiche produit,
+   `exchange_items` par défaut (configurable via `ONESTOCK_EXCHANGE_ATTRIBUTE`).
+   Valeurs attendues : identifiants d'items, en plusieurs valeurs ou séparés par des virgules, ex. `"SKU-M,SKU-L"`.
+   - *Same model* : articles ayant le même `product_id` (choix taille / couleur).
    - *Different model* : les autres articles listés.
-3. **Création de la commande d'échange** : `POST /v3/orders` (id `EXC-<commande>-<suffixe>`, type `exchange`,
-   référence à la commande d'origine et aux articles retournés dans `information`).
+3. **Création de la commande d'échange** : `POST /orders` (id `EXC-<commande>-<suffixe>`, type `ffs` par défaut,
+   `information.order_kind = exchange`, commande d'origine et articles retournés dans `information`).
+
+Features lues sur les items : `name`, `color`, `size`, `price`, `image_url` et l'attribut d'échange.
 
 ## Architecture
 
@@ -29,7 +34,8 @@ Une ligne avec `site_id` (= `ONESTOCK_SITE_ID`) l'emporte sur la ligne globale, 
 
 | key | effet |
 | --- | --- |
-| `onestock_api_root` | URL de l'API OneStock (prioritaire sur `ONESTOCK_API_URL`) |
+| `onestock_api_root` | URL de l'API OneStock (prioritaire sur `ONESTOCK_API_URL`, `/v3` ajouté si absent) |
+| `default_lang` | langue des features items (défaut `fr`) |
 | `api_logs_enabled` | `true` / `false` : enregistre chaque appel OneStock dans `api_logs` |
 
 Chaque appel (login, commande, items, création de commande) est tracé dans `api_logs`
