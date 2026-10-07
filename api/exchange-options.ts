@@ -1,4 +1,4 @@
-import { vercelHandler } from './_handler';
+import { vercelHandler } from './_handler.js';
 
 // GET /api/exchange-options?item_id=<itemId>
 export default vercelHandler('/api/exchange-options');

@@ -1,4 +1,4 @@
-import { Article, CustomerDetails } from './types';
+import type { Article, CustomerDetails } from './types.js';
 
 // Mock data used when the OneStock credentials are not configured.
 // `exchangeItemIds` mimics the product attribute holding the exchange articles.

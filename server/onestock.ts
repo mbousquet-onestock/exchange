@@ -3,8 +3,8 @@
 // which are served by Vercel functions (api/) in production and by a Vite
 // middleware (see vite.config.ts) in development.
 
-import type { Article, CustomerDetails, ExchangeOrderRequest, OrderSummary } from '../types';
-import { ARTICLES, MOCK_ORDER_ARTICLE_IDS, MOCK_ORDER_ID, MOCK_CUSTOMER } from '../mockData';
+import type { Article, CustomerDetails, ExchangeOrderRequest, OrderSummary } from '../types.js';
+import { ARTICLES, MOCK_ORDER_ARTICLE_IDS, MOCK_ORDER_ID, MOCK_CUSTOMER } from '../mockData.js';
 
 type Env = Record<string, string | undefined>;
 

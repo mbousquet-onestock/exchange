@@ -1,5 +1,5 @@
 // Adapter between Vercel Node functions and the shared OneStock router.
-import { handleApi } from '../server/onestock';
+import { handleApi } from '../server/onestock.js';
 
 export const vercelHandler = (path: string) => async (req: any, res: any) => {
   const { status, json } = await handleApi({
