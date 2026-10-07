@@ -1,9 +1,21 @@
 
-import React, { useState, useCallback, useMemo } from 'react';
-import { Article, SelectionConfig, CustomerDetails, Step, ReturnAction, ExchangeType } from './types.ts';
-import { ARTICLES, REASONS, SIZES, COLORS, METHODS } from './constants.tsx';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { Article, SelectionConfig, CustomerDetails, Step, OrderSummary, ExchangeOrderLine } from './types.ts';
+import { REASONS, METHODS } from './constants.tsx';
 import Stepper from './components/Stepper.tsx';
 import ArticleCard from './components/ArticleCard.tsx';
+import { getOrder, getExchangeOptions, createExchangeOrder } from './services/api.ts';
+
+const EMPTY_CUSTOMER: CustomerDetails = {
+  email: '', phone: '', firstName: '', lastName: '', address: '', city: '', zipCode: '', country: ''
+};
+
+const isSameModel = (a: Article, b: Article) =>
+  a.productId && b.productId ? a.productId === b.productId : a.name === b.name;
+
+const uniq = (values: string[]) => [...new Set(values.filter(Boolean))];
+
+const SELECT_STYLE: React.CSSProperties = { backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%23888\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.75rem center', backgroundSize: '1rem' };
 
 const App: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<Step>(Step.Selection);
@@ -11,26 +23,76 @@ const App: React.FC = () => {
   const [itemConfigs, setItemConfigs] = useState<Record<string, SelectionConfig>>({});
   const [selectedMethod, setSelectedMethod] = useState<string>('');
   const [exchangeSearchQuery, setExchangeSearchQuery] = useState<string>('');
-  const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
-    email: 'john.doe@onestock-retail.com',
-    phone: '+44 7700 900077',
-    firstName: 'John',
-    lastName: 'Doe',
-    address: '123 E-Commerce Street',
-    city: 'Manchester',
-    zipCode: 'M1 4BT',
-    country: 'United Kingdom'
-  });
+  const [customerDetails, setCustomerDetails] = useState<CustomerDetails>(EMPTY_CUSTOMER);
+
+  // OneStock data
+  const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const [orderIdInput, setOrderIdInput] = useState(urlParams.get('order') || urlParams.get('order_id') || '');
+  const [emailInput, setEmailInput] = useState(urlParams.get('email') || '');
+  const [order, setOrder] = useState<OrderSummary | null>(null);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderError, setOrderError] = useState('');
+  const [exchangeOptions, setExchangeOptions] = useState<Record<string, Article[] | 'loading' | { error: string }>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [exchangeOrderId, setExchangeOrderId] = useState('');
+
+  const loadOrder = useCallback(async (id: string, email: string) => {
+    if (!id.trim()) return;
+    setOrderLoading(true);
+    setOrderError('');
+    try {
+      const result = await getOrder(id.trim(), email.trim() || undefined);
+      setOrder(result);
+      setCustomerDetails({ ...EMPTY_CUSTOMER, ...result.customer });
+    } catch (e) {
+      setOrderError(e instanceof Error ? e.message : 'Unable to load the order');
+    } finally {
+      setOrderLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (orderIdInput) loadOrder(orderIdInput, emailInput);
+    // Only auto-load once from the URL parameters
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Articles available in the user's order to be returned/exchanged
-  const orderArticles = useMemo(() => 
-    ARTICLES.filter(a => a.id !== '1006102405490'),
-    []
-  );
+  const orderArticles = order?.articles || [];
 
   const selectedArticles = useMemo(() => 
-    ARTICLES.filter(a => selectedItemIds.includes(a.id)),
-    [selectedItemIds]
+    orderArticles.filter(a => selectedItemIds.includes(a.id)),
+    [orderArticles, selectedItemIds]
+  );
+
+  // Exchange articles are read from the product attribute, fetched on demand
+  const loadExchangeOptions = useCallback((itemId: string) => {
+    setExchangeOptions(prev => {
+      if (prev[itemId] && !(typeof prev[itemId] === 'object' && 'error' in (prev[itemId] as object))) return prev;
+      getExchangeOptions(itemId)
+        .then(items => setExchangeOptions(p => ({ ...p, [itemId]: items })))
+        .catch(e => setExchangeOptions(p => ({ ...p, [itemId]: { error: e instanceof Error ? e.message : 'Error' } })));
+      return { ...prev, [itemId]: 'loading' };
+    });
+  }, []);
+
+  useEffect(() => {
+    selectedArticles.forEach(a => {
+      if (itemConfigs[a.id]?.action === 'exchange') loadExchangeOptions(a.id);
+    });
+  }, [selectedArticles, itemConfigs, loadExchangeOptions]);
+
+  const optionsFor = (id: string): Article[] => {
+    const value = exchangeOptions[id];
+    return Array.isArray(value) ? value : [];
+  };
+
+  const findExchangeArticle = (article: Article, config?: SelectionConfig) =>
+    config?.exchangeArticleId ? optionsFor(article.id).find(a => a.id === config.exchangeArticleId) || null : null;
+
+  const missingExchangeChoice = selectedArticles.some(a =>
+    itemConfigs[a.id]?.action === 'exchange' && !findExchangeArticle(a, itemConfigs[a.id])
   );
 
   const toggleItemSelection = useCallback((id: string) => {
@@ -58,9 +120,53 @@ const App: React.FC = () => {
     }));
   };
 
+  const submitRequest = async () => {
+    if (!order) return;
+    const lines: ExchangeOrderLine[] = selectedArticles.flatMap(article => {
+      const config = itemConfigs[article.id];
+      const exchangeArticle = config?.action === 'exchange' ? findExchangeArticle(article, config) : null;
+      return exchangeArticle ? [{
+        returnedItemId: article.id,
+        exchangeItemId: exchangeArticle.id,
+        quantity: article.quantity,
+        price: exchangeArticle.price,
+        reason: config.reason
+      }] : [];
+    });
+
+    setSubmitError('');
+    if (lines.length) {
+      setSubmitting(true);
+      try {
+        const result = await createExchangeOrder({
+          originalOrderId: order.id,
+          method: selectedMethod,
+          customer: customerDetails,
+          lines
+        });
+        setExchangeOrderId(result.id);
+      } catch (e) {
+        setSubmitError(e instanceof Error ? e.message : 'Unable to create the exchange order');
+        return;
+      } finally {
+        setSubmitting(false);
+      }
+    }
+    setCurrentStep(Step.Confirmation);
+  };
+
+  const isNextDisabled =
+    submitting ||
+    (currentStep === Step.Selection && selectedItemIds.length === 0) ||
+    (currentStep === Step.Configuration && missingExchangeChoice) ||
+    (currentStep === Step.Method && !selectedMethod);
+
   const handleNext = () => {
-    if (currentStep === Step.Selection && selectedItemIds.length === 0) return;
-    if (currentStep === Step.Method && !selectedMethod) return;
+    if (isNextDisabled) return;
+    if (currentStep === Step.Validation) {
+      submitRequest();
+      return;
+    }
     setCurrentStep(prev => (prev + 1) as Step);
   };
 
@@ -81,9 +187,49 @@ const App: React.FC = () => {
     </div>
   );
 
+  const renderOrderLookup = () => (
+    <div className="max-w-sm mx-auto pt-12">
+      <h2 className="text-xl font-bold text-gray-800 mb-1 text-center">Returns & exchanges</h2>
+      <p className="text-[13px] text-gray-500 mb-6 text-center">Enter your order number to get started.</p>
+      <form
+        className="bg-white border border-gray-200 rounded-lg p-4 space-y-3 shadow-sm"
+        onSubmit={(e) => { e.preventDefault(); loadOrder(orderIdInput, emailInput); }}
+      >
+        <div className="space-y-0.5">
+          <label className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Order number</label>
+          <input
+            type="text"
+            required
+            className="w-full p-2 bg-[#f9fafb] border border-gray-200 rounded-md text-[13px] outline-none focus:bg-white focus:border-[#20B2AA] transition-all"
+            value={orderIdInput}
+            onChange={(e) => setOrderIdInput(e.target.value)}
+          />
+        </div>
+        <div className="space-y-0.5">
+          <label className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Email</label>
+          <input
+            type="email"
+            className="w-full p-2 bg-[#f9fafb] border border-gray-200 rounded-md text-[13px] outline-none focus:bg-white focus:border-[#20B2AA] transition-all"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+          />
+        </div>
+        {orderError && <p className="text-[12px] text-red-500">{orderError}</p>}
+        <button
+          type="submit"
+          disabled={orderLoading}
+          className={`w-full py-2 bg-[#20B2AA] text-white text-[13px] font-bold rounded-lg hover:bg-[#16A085] transition-colors ${orderLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          {orderLoading ? 'Loading...' : 'Find my order'}
+        </button>
+      </form>
+    </div>
+  );
+
   const renderSelectionStep = () => (
     <div className="space-y-2">
-      <InfoBar text="Select items to return or exchange" />
+      <InfoBar text={`Order ${order?.id} — select items to return or exchange`} />
+      {order?.mock && <InfoBar text="Demo mode: OneStock API credentials are not configured." />}
       {orderArticles.map(article => (
         <ArticleCard 
           key={article.id} 
@@ -100,10 +246,25 @@ const App: React.FC = () => {
       <InfoBar text="Choose your return or exchange options" />
       {selectedArticles.map(article => {
         const config = itemConfigs[article.id];
-        const exchangeArticle = config.exchangeArticleId ? ARTICLES.find(a => a.id === config.exchangeArticleId) : null;
-        
-        const filteredArticles = ARTICLES.filter(a => 
-          a.id !== article.id && 
+        const exchangeArticle = findExchangeArticle(article, config);
+        const optionsState = exchangeOptions[article.id];
+        const options = optionsFor(article.id).filter(a => a.id !== article.id);
+
+        // Same model: variants sharing the product id, selected by size / color
+        const sameModelOptions = options.filter(a => isSameModel(a, article));
+        const variants = [article, ...sameModelOptions];
+        const selectedSize = config.exchangeSize ?? article.size;
+        const selectedColor = config.exchangeColor ?? article.color;
+        const sizes = uniq(variants.map(v => v.size));
+        const colors = uniq(variants.map(v => v.color));
+        const selectVariant = (size: string, color: string) => {
+          const match = sameModelOptions.find(v => v.size === size && v.color === color);
+          updateItemConfig(article.id, { exchangeSize: size, exchangeColor: color, exchangeArticleId: match?.id });
+        };
+        const variantUnavailable = !exchangeArticle && (selectedSize !== article.size || selectedColor !== article.color);
+
+        const filteredArticles = options.filter(a => 
+          !isSameModel(a, article) &&
           (a.name.toLowerCase().includes(exchangeSearchQuery.toLowerCase()) || 
            a.sku.toLowerCase().includes(exchangeSearchQuery.toLowerCase()))
         );
@@ -147,7 +308,7 @@ const App: React.FC = () => {
                 <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Reason</label>
                 <select 
                   className="w-full p-2 bg-white border border-gray-200 rounded-md text-[13px] outline-none focus:border-[#20B2AA] appearance-none"
-                  style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%23888\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.75rem center', backgroundSize: '1rem' }}
+                  style={SELECT_STYLE}
                   value={config.reason}
                   onChange={(e) => updateItemConfig(article.id, { reason: e.target.value })}
                 >
@@ -160,7 +321,7 @@ const App: React.FC = () => {
                 <div className="space-y-3 pt-1 border-t border-gray-100 mt-1">
                   <div className="flex p-1 bg-gray-100 rounded-md">
                     <button
-                      onClick={() => updateItemConfig(article.id, { exchangeType: 'same_model' })}
+                      onClick={() => updateItemConfig(article.id, { exchangeType: 'same_model', exchangeArticleId: undefined, exchangeSize: undefined, exchangeColor: undefined })}
                       className={`flex-1 py-1 text-[11px] font-bold rounded transition-all ${
                         config.exchangeType === 'same_model' ? 'bg-white shadow-sm text-[#20B2AA]' : 'text-gray-500'
                       }`}
@@ -168,7 +329,7 @@ const App: React.FC = () => {
                       Same model
                     </button>
                     <button
-                      onClick={() => updateItemConfig(article.id, { exchangeType: 'different_model' })}
+                      onClick={() => updateItemConfig(article.id, { exchangeType: 'different_model', exchangeArticleId: undefined })}
                       className={`flex-1 py-1 text-[11px] font-bold rounded transition-all ${
                         config.exchangeType === 'different_model' ? 'bg-white shadow-sm text-[#20B2AA]' : 'text-gray-500'
                       }`}
@@ -177,30 +338,45 @@ const App: React.FC = () => {
                     </button>
                   </div>
 
-                  {config.exchangeType === 'same_model' ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Size</label>
-                        <select 
-                          className="w-full p-2 bg-white border border-gray-200 rounded-md text-[13px] outline-none focus:border-[#20B2AA] appearance-none"
-                          style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%23888\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.75rem center', backgroundSize: '1rem' }}
-                          value={config.exchangeSize || article.size}
-                          onChange={(e) => updateItemConfig(article.id, { exchangeSize: e.target.value })}
-                        >
-                          {SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
+                  {optionsState === 'loading' || optionsState === undefined ? (
+                    <p className="text-center py-2 text-gray-400 text-[11px]">Loading exchange articles...</p>
+                  ) : typeof optionsState === 'object' && 'error' in optionsState ? (
+                    <p className="text-center py-2 text-red-500 text-[11px]">Unable to load exchange articles: {optionsState.error}</p>
+                  ) : config.exchangeType === 'same_model' ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Size</label>
+                          <select 
+                            className="w-full p-2 bg-white border border-gray-200 rounded-md text-[13px] outline-none focus:border-[#20B2AA] appearance-none"
+                            style={SELECT_STYLE}
+                            value={selectedSize}
+                            onChange={(e) => selectVariant(e.target.value, selectedColor)}
+                          >
+                            {sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Color</label>
+                          <select 
+                            className="w-full p-2 bg-white border border-gray-200 rounded-md text-[13px] outline-none focus:border-[#20B2AA] appearance-none"
+                            style={SELECT_STYLE}
+                            value={selectedColor}
+                            onChange={(e) => selectVariant(selectedSize, e.target.value)}
+                          >
+                            {colors.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Color</label>
-                        <select 
-                          className="w-full p-2 bg-white border border-gray-200 rounded-md text-[13px] outline-none focus:border-[#20B2AA] appearance-none"
-                          style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%23888\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.75rem center', backgroundSize: '1rem' }}
-                          value={config.exchangeColor || article.color}
-                          onChange={(e) => updateItemConfig(article.id, { exchangeColor: e.target.value })}
-                        >
-                          {COLORS.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </div>
+                      {sameModelOptions.length === 0 ? (
+                        <p className="text-[11px] text-gray-400">No other variant of this model is available for exchange.</p>
+                      ) : variantUnavailable ? (
+                        <p className="text-[11px] text-orange-600">This size / color combination is not available for exchange.</p>
+                      ) : exchangeArticle ? (
+                        <p className="text-[11px] text-gray-500">Exchange article: <strong>{exchangeArticle.sku}</strong></p>
+                      ) : (
+                        <p className="text-[11px] text-gray-400">Select a new size or color.</p>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -242,7 +418,10 @@ const App: React.FC = () => {
                         )}
                       </div>
 
-                      {exchangeArticle && (
+                    </div>
+                  )}
+
+                  {exchangeArticle && (
                         <div className={`p-2 rounded-md border flex gap-2 items-center ${
                           exchangeArticle.price > article.price ? 'bg-orange-50 border-orange-100 text-orange-800' : 
                           exchangeArticle.price < article.price ? 'bg-green-50 border-green-100 text-green-800' : 
@@ -274,8 +453,6 @@ const App: React.FC = () => {
                           </p>
                         </div>
                       )}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -413,6 +590,9 @@ const App: React.FC = () => {
       <h2 className="text-xl font-bold text-gray-800 mb-1">Request Submitted!</h2>
       <p className="text-[13px] text-gray-500 max-w-sm mx-auto mb-6 leading-relaxed">
         Your return request is confirmed. We sent instructions to <strong>{customerDetails.email}</strong>.
+        {exchangeOrderId && (
+          <><br />Your exchange order <strong>{exchangeOrderId}</strong> has been created.</>
+        )}
       </p>
       <button 
         onClick={() => window.location.reload()}
@@ -422,6 +602,18 @@ const App: React.FC = () => {
       </button>
     </div>
   );
+
+  if (!order) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] flex flex-col">
+        <main className="flex-grow max-w-2xl w-full mx-auto px-4 pb-20">
+          {orderLoading && !orderError ? (
+            <p className="text-center pt-16 text-[13px] text-gray-500">Loading your order...</p>
+          ) : renderOrderLookup()}
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] flex flex-col">
@@ -440,6 +632,9 @@ const App: React.FC = () => {
       {/* Bottom Navigation */}
       {currentStep !== Step.Confirmation && (
         <footer className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-3 z-50">
+          {submitError && (
+            <p className="max-w-2xl mx-auto mb-2 text-[12px] text-red-500">{submitError}</p>
+          )}
           <div className="max-w-2xl mx-auto flex items-center justify-between">
             <div>
               {currentStep > Step.Selection && (
@@ -453,18 +648,19 @@ const App: React.FC = () => {
             </div>
             <div className="flex gap-2">
               <button 
+                onClick={() => window.location.reload()}
                 className="px-4 py-2 border border-gray-200 text-gray-600 text-[13px] font-bold rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button 
                 onClick={handleNext}
-                disabled={currentStep === Step.Selection && selectedItemIds.length === 0}
+                disabled={isNextDisabled}
                 className={`px-6 py-2 bg-[#20B2AA] text-white text-[13px] font-bold rounded-lg hover:bg-[#16A085] transition-all ${
-                    (currentStep === Step.Selection && selectedItemIds.length === 0) ? 'opacity-50 cursor-not-allowed' : ''
+                    isNextDisabled ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
-                {currentStep === Step.Validation ? 'Confirm' : 'Next'}
+                {currentStep === Step.Validation ? (submitting ? 'Creating...' : 'Confirm') : 'Next'}
               </button>
             </div>
           </div>

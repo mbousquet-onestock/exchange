@@ -1,5 +1,5 @@
 {
   "name": "OneStock Returns Portal",
-  "description": "A sleek, responsive returns and exchanges application designed with the OneStock design system. This is a static frontend implementation with no external API dependencies.",
+  "description": "Returns and exchanges portal with the OneStock design system, connected to the OneStock API to load order items, exchange articles (product attribute) and create exchange orders.",
   "requestFramePermissions": []
 }

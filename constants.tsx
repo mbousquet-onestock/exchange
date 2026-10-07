@@ -1,56 +1,4 @@
 import React from 'react';
-import { Article } from './types';
-
-export const ARTICLES: Article[] = [
-  {
-    id: '1006255003062',
-    name: 'T-shirt short sleeves',
-    price: 9.99,
-    currency: '£',
-    color: 'Black',
-    size: 'M',
-    sku: '1006255003062',
-    imageUrl: 'https://storage.googleapis.com/onestock-tools-hosting-hwn8eubny/mbousquet/aistudio/15707351_BK.jpg',
-    status: 'Fulfilled',
-    quantity: 1
-  },
-  {
-    id: '1006255002072',
-    name: 'T-shirt short sleeves',
-    price: 9.99,
-    currency: '£',
-    color: 'Grey',
-    size: 'S',
-    sku: '1006255002072',
-    imageUrl: 'https://storage.googleapis.com/onestock-tools-hosting-hwn8eubny/mbousquet/aistudio/15707351_GY.jpg',
-    status: 'Fulfilled',
-    quantity: 1
-  },
-  {
-    id: '1006255001082',
-    name: 'T-shirt short sleeves',
-    price: 9.99,
-    currency: '£',
-    color: 'White',
-    size: 'M',
-    sku: '1006255001082',
-    imageUrl: 'https://storage.googleapis.com/onestock-tools-hosting-hwn8eubny/mbousquet/aistudio/15707351_WH.jpg',
-    status: 'Fulfilled',
-    quantity: 1
-  },
-  {
-    id: '1006102405490',
-    name: 'Round-neck t-shirt',
-    price: 12.99,
-    currency: '£',
-    color: 'Red',
-    size: 'S',
-    sku: '1006102405490',
-    imageUrl: 'https://storage.googleapis.com/onestock-tools-hosting-hwn8eubny/mbousquet/aistudio/15719762_RD.jpg',
-    status: 'Fulfilled',
-    quantity: 1
-  }
-];
 
 export const REASONS = [
   "Too small",
@@ -61,8 +9,6 @@ export const REASONS = [
   "Changed my mind"
 ];
 
-export const SIZES = ['XS', 'S', 'M', 'L', 'XL'];
-export const COLORS = ['Black', 'Grey', 'White', 'Navy', 'Red'];
 
 export const METHODS = [
   {
