@@ -31,6 +31,8 @@ export interface OnestockConfig {
   environment: string;
   // Settings key `api_logs_enabled`: write every OneStock call to api_logs
   logsEnabled: boolean;
+  // Opened from a verified OneStock extension context: never fall back to mock data
+  fromExtension: boolean;
   env: Env;
 }
 
@@ -54,6 +56,7 @@ export const getConfig = (env: Env = process.env): OnestockConfig => ({
   lang: env.ONESTOCK_LANG || 'fr',
   environment: env.APP_ENVIRONMENT || 'qualif',
   logsEnabled: false,
+  fromExtension: false,
   env,
 });
 
@@ -64,7 +67,7 @@ export const getConfig = (env: Env = process.env): OnestockConfig => ({
 // extension context instead of ONESTOCK_SITE_ID.
 export const resolveConfig = async (env: Env = process.env, session?: SessionClaims | null): Promise<OnestockConfig> => {
   const base = getConfig(env);
-  const config = session?.site_id ? { ...base, siteId: session.site_id } : base;
+  const config = session?.site_id ? { ...base, siteId: session.site_id, fromExtension: true } : base;
   const settings = await loadSettings(env, { siteId: config.siteId, environment: config.environment });
   return {
     ...config,
@@ -75,7 +78,7 @@ export const resolveConfig = async (env: Env = process.env, session?: SessionCla
 };
 
 export const isMockMode = (config: OnestockConfig) =>
-  !config.siteId || !config.userId || !config.password;
+  !config.fromExtension && (!config.siteId || !config.userId || !config.password);
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -165,6 +168,9 @@ let cachedToken: { value: string; key: string; expiresAt: number } | null = null
 const TOKEN_TTL_MS = 50 * 60 * 1000;
 
 const login = async (config: OnestockConfig): Promise<string> => {
+  if (!config.siteId || !config.userId || !config.password) {
+    throw new HttpError(500, `OneStock credentials not configured (ONESTOCK_USER_ID / ONESTOCK_PASSWORD) for site ${config.siteId || '?'}`);
+  }
   const key = `${config.baseUrl}|${config.siteId}|${config.userId}`;
   if (cachedToken && cachedToken.key === key && cachedToken.expiresAt > Date.now()) {
     return cachedToken.value;
@@ -454,6 +460,26 @@ export const handleApi = async (req: ApiRequest, env: Env = process.env) => {
     }
 
     const session = verifySessionToken(env, bearerToken(req.authorization));
+
+    // Diagnostics, without any secret value
+    if (req.method === 'GET' && req.path === '/api/health') {
+      const config = await resolveConfig(env, isSessionRequired(env) ? session : null);
+      return {
+        status: 200,
+        json: {
+          mode: isMockMode(config) ? 'mock' : 'onestock',
+          session: session ? { site_id: session.site_id, user_id: session.user_id } : null,
+          session_required: isSessionRequired(env),
+          site_id: config.siteId || null,
+          api_url: config.baseUrl,
+          credentials: { user_id: !!config.userId, password: !!config.password },
+          database: !!(env.DATABASE_URL || env.POSTGRES_URL),
+          environment: config.environment,
+          lang: config.lang,
+          api_logs_enabled: config.logsEnabled,
+        },
+      };
+    }
     if (isSessionRequired(env) && !session) throw new HttpError(401, 'Missing or expired session');
 
     // An unverified context (no secrets configured) never changes the site

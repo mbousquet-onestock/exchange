@@ -60,11 +60,15 @@ export const waitForOnestockData = (ctx: ExtensionUrlContext, timeoutMs = 10_000
 
     const timer = window.setTimeout(() => {
       window.removeEventListener('message', onMessage);
-      reject(new Error('No data received from OneStock'));
+      reject(new Error(`No onestock_data message received from ${origin} (check parent_url)`));
     }, timeoutMs);
 
     function onMessage(event: MessageEvent) {
-      if (event.origin !== origin || event.data?.type !== 'onestock_data') return;
+      if (event.data?.type !== 'onestock_data') return;
+      if (event.origin !== origin) {
+        console.warn(`[extension] onestock_data ignored: origin ${event.origin} does not match parent_url ${origin}`);
+        return;
+      }
       window.clearTimeout(timer);
       window.removeEventListener('message', onMessage);
       resolve((event.data.data || {}) as OnestockData);
@@ -88,4 +92,17 @@ export const watchResize = (ctx: ExtensionUrlContext): (() => void) => {
   observer.observe(document.body);
   send();
   return () => observer.disconnect();
+};
+
+// The order id may come under different keys depending on the injection point
+export const contextOrderId = (data: OnestockData, url = new URLSearchParams(window.location.search)): string => {
+  const order = data.order as Record<string, unknown> | undefined;
+  const candidates = [
+    data.order_id, data.orderId, order?.id, data.id,
+    Array.isArray(data.order_ids) ? data.order_ids[0] : undefined,
+    Array.isArray(data.orderIds) ? (data.orderIds as unknown[])[0] : undefined,
+    url.get('order_id'), url.get('order'),
+  ];
+  const found = candidates.find(v => typeof v === 'string' || typeof v === 'number');
+  return found === undefined ? '' : String(found).trim();
 };

@@ -5,7 +5,7 @@ import { REASONS, METHODS } from './constants.tsx';
 import Stepper from './components/Stepper.tsx';
 import ArticleCard from './components/ArticleCard.tsx';
 import { getOrder, getExchangeOptions, createExchangeOrder, openSession, setSessionToken } from './services/api.ts';
-import { readUrlContext, waitForOnestockData, watchResize } from './services/extension.ts';
+import { contextOrderId, readUrlContext, waitForOnestockData, watchResize } from './services/extension.ts';
 
 const EMPTY_CUSTOMER: CustomerDetails = {
   email: '', phone: '', firstName: '', lastName: '', address: '', city: '', zipCode: '', country: ''
@@ -69,6 +69,8 @@ const App: React.FC = () => {
     (async () => {
       try {
         const data = await waitForOnestockData(extensionContext);
+        const { extension_signature, ...visibleData } = data;
+        console.info('[extension] context', extensionContext, 'onestock_data', visibleData);
         const session = await openSession({
           extension_id: extensionContext.extension_id,
           user_id: extensionContext.user_id,
@@ -78,11 +80,12 @@ const App: React.FC = () => {
         if (cancelled) return;
         setSessionToken(session.token);
 
-        const contextOrderId = data.order_id || data.order_ids?.[0] || orderIdInput;
-        if (contextOrderId) {
-          setOrderIdInput(contextOrderId);
-          await loadOrder(contextOrderId, '');
+        const orderId = contextOrderId(data) || orderIdInput;
+        if (orderId) {
+          setOrderIdInput(orderId);
+          await loadOrder(orderId, '');
         } else {
+          setOrderError(`No order id received from OneStock (onestock_data keys: ${Object.keys(visibleData).join(', ') || 'none'})`);
           setOrderLoading(false);
         }
       } catch (e) {

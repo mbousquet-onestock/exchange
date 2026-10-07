@@ -43,6 +43,9 @@ Les identifiants OneStock restent côté serveur (jamais exposés au navigateur)
    `order_id` est chargée directement.
 5. La hauteur de l'iframe est ajustée via `extension_resize`.
 
+Diagnostic : `GET /api/health` (mode mock ou OneStock, site, URL d'API, identifiants présents, base, logs —
+aucune valeur secrète). La console du navigateur affiche le contexte et `onestock_data` reçus (`[extension]`).
+
 Sans `ONESTOCK_EXTENSION_SECRETS`, l'app reste utilisable en autonome (formulaire de recherche de commande).
 
 ## Base de données (settings / api_logs)
