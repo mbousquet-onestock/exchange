@@ -7,6 +7,7 @@ export const vercelHandler = (path: string) => async (req: any, res: any) => {
     path,
     query: req.query || {},
     body: typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body,
+    authorization: req.headers?.authorization,
   });
   res.status(status).json(json);
 };

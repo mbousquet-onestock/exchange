@@ -6,6 +6,10 @@
 import type { Article, CustomerDetails, ExchangeOrderRequest, OrderSummary } from '../types.js';
 import { ARTICLES, MOCK_ORDER_ARTICLE_IDS, MOCK_ORDER_ID, MOCK_CUSTOMER } from '../mockData.js';
 import { isTruthy, loadSettings, writeApiLog } from './db.js';
+import {
+  bearerToken, createSessionToken, getExtensionSecrets, isSessionRequired,
+  verifyExtensionSignature, verifySessionToken, type ExtensionContext, type SessionClaims,
+} from './session.js';
 
 type Env = Record<string, string | undefined>;
 
@@ -56,8 +60,11 @@ export const getConfig = (env: Env = process.env): OnestockConfig => ({
 // Env config completed with the shared `settings` table:
 // - onestock_api_root overrides ONESTOCK_API_URL
 // - api_logs_enabled enables the api_logs table
-export const resolveConfig = async (env: Env = process.env): Promise<OnestockConfig> => {
-  const config = getConfig(env);
+// When opened as a OneStock UI extension, the site comes from the verified
+// extension context instead of ONESTOCK_SITE_ID.
+export const resolveConfig = async (env: Env = process.env, session?: SessionClaims | null): Promise<OnestockConfig> => {
+  const base = getConfig(env);
+  const config = session?.site_id ? { ...base, siteId: session.site_id } : base;
   const settings = await loadSettings(env, { siteId: config.siteId, environment: config.environment });
   return {
     ...config,
@@ -416,11 +423,41 @@ export interface ApiRequest {
   path: string;
   query: Record<string, string | undefined>;
   body?: any;
+  authorization?: string;
 }
+
+// POST /api/session: exchanges the OneStock extension context for a session token
+const openSession = (env: Env, body: any) => {
+  const ctx: ExtensionContext = {
+    extension_id: str(body?.extension_id),
+    user_id: str(body?.user_id),
+    site_id: str(body?.site_id),
+    extension_signature: str(body?.extension_signature),
+  };
+  if (!ctx.extension_id || !ctx.user_id || !ctx.site_id) throw new HttpError(400, 'Incomplete extension context');
+
+  if (isSessionRequired(env) && !verifyExtensionSignature(ctx, getExtensionSecrets(env))) {
+    throw new HttpError(401, 'Invalid extension signature');
+  }
+  const { token, expiresAt } = createSessionToken(env, {
+    site_id: ctx.site_id,
+    user_id: ctx.user_id,
+    extension_id: ctx.extension_id,
+  });
+  return { token, expiresAt, verified: isSessionRequired(env) };
+};
 
 export const handleApi = async (req: ApiRequest, env: Env = process.env) => {
   try {
-    const config = await resolveConfig(env);
+    if (req.method === 'POST' && req.path === '/api/session') {
+      return { status: 201, json: openSession(env, req.body) };
+    }
+
+    const session = verifySessionToken(env, bearerToken(req.authorization));
+    if (isSessionRequired(env) && !session) throw new HttpError(401, 'Missing or expired session');
+
+    // An unverified context (no secrets configured) never changes the site
+    const config = await resolveConfig(env, isSessionRequired(env) ? session : null);
     if (req.method === 'GET' && req.path === '/api/order') {
       return { status: 200, json: await fetchOrder(config, str(req.query.id).trim(), req.query.email?.trim()) };
     }

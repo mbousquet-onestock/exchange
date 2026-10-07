@@ -4,7 +4,8 @@ import { Article, SelectionConfig, CustomerDetails, Step, OrderSummary, Exchange
 import { REASONS, METHODS } from './constants.tsx';
 import Stepper from './components/Stepper.tsx';
 import ArticleCard from './components/ArticleCard.tsx';
-import { getOrder, getExchangeOptions, createExchangeOrder } from './services/api.ts';
+import { getOrder, getExchangeOptions, createExchangeOrder, openSession, setSessionToken } from './services/api.ts';
+import { readUrlContext, waitForOnestockData, watchResize } from './services/extension.ts';
 
 const EMPTY_CUSTOMER: CustomerDetails = {
   email: '', phone: '', firstName: '', lastName: '', address: '', city: '', zipCode: '', country: ''
@@ -52,9 +53,50 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Context given by OneStock when the app is opened as a UI extension
+  const extensionContext = useMemo(() => readUrlContext(), []);
+  const [extensionError, setExtensionError] = useState('');
+
   useEffect(() => {
-    if (orderIdInput) loadOrder(orderIdInput, emailInput);
-    // Only auto-load once from the URL parameters
+    if (!extensionContext) {
+      if (orderIdInput) loadOrder(orderIdInput, emailInput);
+      return;
+    }
+
+    const stopResize = watchResize(extensionContext);
+    let cancelled = false;
+    setOrderLoading(true);
+    (async () => {
+      try {
+        const data = await waitForOnestockData(extensionContext);
+        const session = await openSession({
+          extension_id: extensionContext.extension_id,
+          user_id: extensionContext.user_id,
+          site_id: extensionContext.site_id,
+          extension_signature: data.extension_signature,
+        });
+        if (cancelled) return;
+        setSessionToken(session.token);
+
+        const contextOrderId = data.order_id || data.order_ids?.[0] || orderIdInput;
+        if (contextOrderId) {
+          setOrderIdInput(contextOrderId);
+          await loadOrder(contextOrderId, '');
+        } else {
+          setOrderLoading(false);
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setExtensionError(e instanceof Error ? e.message : 'Unable to connect to OneStock');
+        setOrderLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      stopResize();
+    };
+    // Runs once, when the app is opened
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -607,7 +649,9 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#f8f9fa] flex flex-col">
         <main className="flex-grow max-w-2xl w-full mx-auto px-4 pb-20">
-          {orderLoading && !orderError ? (
+          {extensionError ? (
+            <p className="text-center pt-16 text-[13px] text-red-500">OneStock extension: {extensionError}</p>
+          ) : orderLoading && !orderError ? (
             <p className="text-center pt-16 text-[13px] text-gray-500">Loading your order...</p>
           ) : renderOrderLookup()}
         </main>

@@ -19,6 +19,7 @@ const onestockApi = (env: Record<string, string>): Plugin => ({
           path: url.pathname,
           query: Object.fromEntries(url.searchParams),
           body: raw ? JSON.parse(raw) : undefined,
+          authorization: req.headers.authorization,
         },
         { ...process.env, ...env },
       );

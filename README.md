@@ -22,9 +22,28 @@ Features lues sur les items : `name`, `color`, `size`, `price`, `image_url` et l
 - `server/db.ts` : lecture de la table `settings`, écriture dans `api_logs`.
 - `api/*.ts` : fonctions Vercel exposant ces routes en production.
 - `vite.config.ts` : middleware qui sert les mêmes routes en `npm run dev`.
+- `server/session.ts` : vérification de la signature d'extension, sessions.
+- `services/extension.ts` : contexte d'ouverture OneStock (URL, postMessage, resize).
 - `services/api.ts` : appels depuis le front.
 
 Les identifiants OneStock restent côté serveur (jamais exposés au navigateur).
+
+## Ouverture en tant qu'extension OneStock (UI Extensibility)
+
+À l'ouverture, OneStock charge l'app dans une iframe avec les paramètres d'URL `extension_id`, `user_id`,
+`site_id`, `lang`, `timezone`, `locale`, `parent_url`, `injection_point_path`, `host_app`.
+
+1. L'app envoie `extension_ready` à `parent_url` (`services/extension.ts`).
+2. OneStock répond `onestock_data` (`order_id` / `order_ids`, `extension_signature`…) : seuls les messages
+   dont l'origine est `parent_url` sont acceptés.
+3. Le contexte est envoyé à `POST /api/session`, qui vérifie la signature HMAC-SHA256
+   (`t=<ts>,h0=…,h1=…,h2=…` sur `"<ts>.<extension_id>##<user_id>"`, 6 h max, rotation des clés)
+   avec `ONESTOCK_EXTENSION_SECRETS`, puis renvoie un jeton de session (1 h) envoyé en `Authorization: Bearer`.
+4. Le `site_id` de la session remplace `ONESTOCK_SITE_ID` (settings, logs, appels OneStock) et la commande
+   `order_id` est chargée directement.
+5. La hauteur de l'iframe est ajustée via `extension_resize`.
+
+Sans `ONESTOCK_EXTENSION_SECRETS`, l'app reste utilisable en autonome (formulaire de recherche de commande).
 
 ## Base de données (settings / api_logs)
 
