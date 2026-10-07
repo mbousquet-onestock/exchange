@@ -5,6 +5,7 @@
 
 import type { Article, CustomerDetails, ExchangeOrderRequest, OrderSummary } from '../types.js';
 import { ARTICLES, MOCK_ORDER_ARTICLE_IDS, MOCK_ORDER_ID, MOCK_CUSTOMER } from '../mockData.js';
+import { isTruthy, loadSettings, writeApiLog } from './db.js';
 
 type Env = Record<string, string | undefined>;
 
@@ -20,6 +21,11 @@ export interface OnestockConfig {
   exchangeOrderType: string;
   salesChannel: string;
   currency: string;
+  // Value of the `environment` column in the settings / api_logs tables
+  environment: string;
+  // Settings key `api_logs_enabled`: write every OneStock call to api_logs
+  logsEnabled: boolean;
+  env: Env;
 }
 
 export const getConfig = (env: Env = process.env): OnestockConfig => ({
@@ -32,7 +38,23 @@ export const getConfig = (env: Env = process.env): OnestockConfig => ({
   exchangeOrderType: env.ONESTOCK_EXCHANGE_ORDER_TYPE || 'exchange',
   salesChannel: env.ONESTOCK_SALES_CHANNEL || 'returns_portal',
   currency: env.ONESTOCK_CURRENCY || 'GBP',
+  environment: env.APP_ENVIRONMENT || 'qualif',
+  logsEnabled: false,
+  env,
 });
+
+// Env config completed with the shared `settings` table:
+// - onestock_api_root overrides ONESTOCK_API_URL
+// - api_logs_enabled enables the api_logs table
+export const resolveConfig = async (env: Env = process.env): Promise<OnestockConfig> => {
+  const config = getConfig(env);
+  const settings = await loadSettings(env, { siteId: config.siteId, environment: config.environment });
+  return {
+    ...config,
+    baseUrl: (settings.onestock_api_root || config.baseUrl).replace(/\/$/, ''),
+    logsEnabled: isTruthy(settings.api_logs_enabled),
+  };
+};
 
 export const isMockMode = (config: OnestockConfig) =>
   !config.siteId || !config.userId || !config.password;
@@ -47,6 +69,75 @@ export class HttpError extends Error {
 // Low level calls
 // ---------------------------------------------------------------------------
 
+const SECRET_KEYS = new Set(['password', 'token']);
+const MASK = '***';
+
+// Removes credentials before a request is written to api_logs
+const maskSecrets = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(maskSecrets);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, SECRET_KEYS.has(k) ? MASK : maskSecrets(v)]),
+    );
+  }
+  return value;
+};
+
+const maskUrl = (url: URL) => {
+  const masked = new URL(url);
+  SECRET_KEYS.forEach(k => masked.searchParams.has(k) && masked.searchParams.set(k, MASK));
+  return decodeURIComponent(masked.toString());
+};
+
+const parseJson = (text: string) => {
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { raw: text };
+  }
+};
+
+// fetch() + api_logs entry when logging is enabled in settings
+const loggedFetch = async (
+  config: OnestockConfig,
+  method: 'GET' | 'POST',
+  url: URL,
+  body?: Record<string, unknown>,
+): Promise<{ status: number; data: any }> => {
+  const started = Date.now();
+  let status: number | null = null;
+  let data: any = null;
+  let error: string | null = null;
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    status = res.status;
+    data = parseJson(await res.text());
+    if (!res.ok) error = data?.message || data?.error || `HTTP ${res.status}`;
+    return { status, data };
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+    throw new HttpError(502, `OneStock unreachable: ${error}`);
+  } finally {
+    if (config.logsEnabled) {
+      await writeApiLog(config.env, {
+        method,
+        url: maskUrl(url),
+        request: body ? maskSecrets(body) : null,
+        status,
+        durationMs: Date.now() - started,
+        response: maskSecrets(data),
+        error,
+        siteId: config.siteId,
+        environment: config.environment,
+      });
+    }
+  }
+};
+
 let cachedToken: { value: string; key: string; expiresAt: number } | null = null;
 const TOKEN_TTL_MS = 50 * 60 * 1000;
 
@@ -55,13 +146,12 @@ const login = async (config: OnestockConfig): Promise<string> => {
   if (cachedToken && cachedToken.key === key && cachedToken.expiresAt > Date.now()) {
     return cachedToken.value;
   }
-  const res = await fetch(`${config.baseUrl}/v3/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ site_id: config.siteId, user_id: config.userId, password: config.password }),
+  const { status, data } = await loggedFetch(config, 'POST', new URL(`${config.baseUrl}/v3/login`), {
+    site_id: config.siteId,
+    user_id: config.userId,
+    password: config.password,
   });
-  if (!res.ok) throw new HttpError(502, `OneStock login failed (${res.status})`);
-  const data = await res.json();
+  if (status < 200 || status >= 300) throw new HttpError(502, `OneStock login failed (${status})`);
   if (!data?.token) throw new HttpError(502, 'OneStock login returned no token');
   cachedToken = { value: data.token, key, expiresAt: Date.now() + TOKEN_TTL_MS };
   return data.token;
@@ -77,24 +167,23 @@ const call = async (
 ): Promise<any> => {
   const token = await login(config);
   const url = new URL(`${config.baseUrl}${path}`);
-  let init: RequestInit = { method, headers: { 'Content-Type': 'application/json' } };
-
   if (method === 'GET') {
     Object.entries({ site_id: config.siteId, token, ...params }).forEach(([k, v]) => url.searchParams.set(k, v));
-  } else {
-    init.body = JSON.stringify({ site_id: config.siteId, token, ...body });
   }
 
-  const res = await fetch(url, init);
-  if (res.status === 401 && retry) {
+  const { status, data } = await loggedFetch(
+    config,
+    method,
+    url,
+    method === 'POST' ? { site_id: config.siteId, token, ...body } : undefined,
+  );
+  if (status === 401 && retry) {
     cachedToken = null;
     return call(config, method, path, params, body, false);
   }
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
-  if (!res.ok) {
-    const message = data?.message || data?.error || `OneStock ${method} ${path} failed (${res.status})`;
-    throw new HttpError(res.status === 404 ? 404 : 502, message);
+  if (status < 200 || status >= 300) {
+    const message = data?.message || data?.error || `OneStock ${method} ${path} failed (${status})`;
+    throw new HttpError(status === 404 ? 404 : 502, message);
   }
   return data;
 };
@@ -302,8 +391,8 @@ export interface ApiRequest {
 }
 
 export const handleApi = async (req: ApiRequest, env: Env = process.env) => {
-  const config = getConfig(env);
   try {
+    const config = await resolveConfig(env);
     if (req.method === 'GET' && req.path === '/api/order') {
       return { status: 200, json: await fetchOrder(config, str(req.query.id).trim(), req.query.email?.trim()) };
     }

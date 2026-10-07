@@ -14,11 +14,29 @@ Portail de retours / échanges connecté à l'API OneStock (v3) :
 ## Architecture
 
 - `server/onestock.ts` : client OneStock (login + token en cache), mapping des données, routes `/api/*`.
+- `server/db.ts` : lecture de la table `settings`, écriture dans `api_logs`.
 - `api/*.ts` : fonctions Vercel exposant ces routes en production.
 - `vite.config.ts` : middleware qui sert les mêmes routes en `npm run dev`.
 - `services/api.ts` : appels depuis le front.
 
 Les identifiants OneStock restent côté serveur (jamais exposés au navigateur).
+
+## Base de données (settings / api_logs)
+
+Connexion via `DATABASE_URL` (ou `POSTGRES_URL`). Paramètres lus dans la table `settings`
+pour `environment = APP_ENVIRONMENT` (défaut `qualif`) et `extension_id` = `exchange` ou `*`.
+Une ligne avec `site_id` (= `ONESTOCK_SITE_ID`) l'emporte sur la ligne globale, et `exchange` sur `*` :
+
+| key | effet |
+| --- | --- |
+| `onestock_api_root` | URL de l'API OneStock (prioritaire sur `ONESTOCK_API_URL`) |
+| `api_logs_enabled` | `true` / `false` : enregistre chaque appel OneStock dans `api_logs` |
+
+Chaque appel (login, commande, items, création de commande) est tracé dans `api_logs`
+(`method`, `url`, `request`, `status`, `duration_ms`, `response`, `error`, `site_id`,
+`extension_id = exchange`, `environment`). Le mot de passe et le token sont masqués (`***`).
+Les settings sont mis en cache 60 s. Une base indisponible ne bloque jamais l'API.
+Script SQL : `sql/api_logs.sql`.
 
 ## Lancer en local
 
